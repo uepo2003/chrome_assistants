@@ -1,0 +1,86 @@
+/* Auto-Tutorial Extension — virtual cursor styles.
+ * Keep minimal: positioning/sizing are set inline by cursor.js so JS can
+ * drive transforms with rAF. Only base shape, ripple keyframes, and label
+ * cosmetics live here so they don't re-parse on every load. */
+
+.at-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px; /* center on (x,y) via translate */
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.85); /* #ef4444 @ ~85% */
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+  z-index: 2147483646;
+  will-change: transform;
+  transform: translate3d(-100px, -100px, 0);
+  box-sizing: border-box;
+}
+
+.at-cursor__ripple {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(239, 68, 68, 0.85);
+  background: rgba(239, 68, 68, 0.18);
+  pointer-events: none;
+  z-index: 2147483646;
+  opacity: 0;
+  box-sizing: border-box;
+  transform: translate3d(-100px, -100px, 0);
+}
+
+.at-cursor__ripple.at-cursor__ripple--active {
+  animation: at-cursor-ripple 250ms ease-out forwards;
+}
+
+.at-cursor__label {
+  position: fixed;
+  top: 0;
+  left: 0;
+  background: rgba(0, 0, 0, 0.78);
+  color: #ffffff;
+  font: 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 4px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 2147483646;
+  white-space: nowrap;
+  transform: translate3d(-100px, -100px, 0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.at-cursor--hidden,
+.at-cursor__ripple--hidden,
+.at-cursor__label--hidden {
+  display: none !important;
+}
+
+@keyframes at-cursor-ripple {
+  0% {
+    width: 0;
+    height: 0;
+    margin: 0;
+    opacity: 0.9;
+  }
+  60% {
+    opacity: 0.55;
+  }
+  100% {
+    width: 46px;
+    height: 46px;
+    margin: -23px 0 0 -23px;
+    opacity: 0;
+  }
+}

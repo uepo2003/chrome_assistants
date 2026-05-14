@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Auto Tutorial Skipper",
+  "version": "0.1.0",
+  "description": "Auto-progress onboarding tutorials with an AI-driven virtual cursor (rule-based fast path + Claude fallback).",
+  "permissions": ["storage", "activeTab", "scripting", "tabs", "sidePanel"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "common/error-capture.js",
+        "common/i18n.js",
+        "common/messages.js",
+        "content/cursor.js",
+        "content/dom-analyzer.js",
+        "content/action-executor.js",
+        "content/rules.js",
+        "content/main.js"
+      ],
+      "css": ["content/content.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Auto Tutorial Skipper",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

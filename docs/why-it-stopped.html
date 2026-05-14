@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>なぜ止まったのか — Browser Copilot</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #fafafa;
+    --ink: #0f172a;
+    --ink-2: #475569;
+    --muted: #94a3b8;
+    --line: #e2e8f0;
+    --line-strong: #cbd5e1;
+    --primary: #ef4444;
+    --primary-soft: #fee2e2;
+    --primary-hover: #dc2626;
+    --success: #10b981;
+    --success-soft: #d1fae5;
+    --warn: #f59e0b;
+    --warn-soft: #fef3c7;
+    --error: #dc2626;
+    --error-soft: #fee2e2;
+    --info: #0ea5e9;
+    --info-soft: #e0f2fe;
+    --code-bg: #0f172a;
+    --code-ink: #e2e8f0;
+    --shadow-sm: 0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03);
+    --shadow-md: 0 6px 24px rgba(15,23,42,.06), 0 2px 6px rgba(15,23,42,.04);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+                 "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI",
+                 Meiryo, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  code, pre, kbd { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  :not(pre) > code {
+    background: #f1f5f9; color: #0f172a;
+    padding: 2px 6px; border-radius: 4px;
+    font-size: .88em;
+  }
+
+  /* ---------- Hero ---------- */
+  header.hero {
+    padding: 64px 0 48px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(800px 360px at 90% -100px, var(--primary-soft), transparent 70%),
+      linear-gradient(180deg, #fff 0%, var(--bg-soft) 100%);
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12px;
+    color: var(--ink-2);
+    letter-spacing: .04em;
+  }
+  .badge::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 4px var(--primary-soft);
+  }
+  h1.title {
+    margin: 18px 0 8px;
+    font-size: 42px; line-height: 1.15;
+    letter-spacing: -.02em; font-weight: 700;
+  }
+  h1 .accent { color: var(--primary); }
+  p.lede {
+    margin: 0;
+    max-width: 720px;
+    font-size: 17px;
+    color: var(--ink-2);
+  }
+
+  section { padding: 56px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+  .eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--primary);
+  }
+  h2.section-title {
+    margin: 6px 0 12px;
+    font-size: 28px; letter-spacing: -.015em; font-weight: 700;
+  }
+  p.section-desc {
+    margin: 0 0 28px;
+    color: var(--ink-2);
+    max-width: 720px;
+  }
+
+  /* ---------- Chat replay (recreates the user's screenshot) ---------- */
+  .chat-replay {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: var(--shadow-md);
+    max-width: 460px;
+  }
+  .chat-replay .entry {
+    display: flex; gap: 10px;
+    padding: 6px 0;
+    align-items: flex-start;
+  }
+  .chat-replay .entry__avatar {
+    flex-shrink: 0;
+    width: 28px; height: 28px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: var(--ink-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700;
+    margin-top: 3px;
+  }
+  .chat-replay .entry--sys {
+    justify-content: center;
+    font-size: 11.5px; color: var(--muted); font-style: italic;
+    padding: 3px 0;
+  }
+  .chat-replay .bubble {
+    background: #fff;
+    border: 1px solid var(--line);
+    padding: 8px 12px;
+    border-radius: 10px;
+    border-bottom-left-radius: 3px;
+    font-size: 13px;
+    color: var(--ink-2);
+    max-width: 320px;
+  }
+  .chat-replay .meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin: 4px 0 0 4px;
+  }
+  .chat-replay .meta.ok { color: var(--success); }
+  .chat-replay .death-marker {
+    margin: 18px -18px -8px;
+    padding: 14px 18px;
+    background: var(--error-soft);
+    border-top: 2px dashed var(--error);
+    border-bottom: 1px solid var(--line);
+    color: var(--error);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    position: relative;
+  }
+  .chat-replay .death-marker::before {
+    content: "✕";
+    display: inline-block;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--error);
+    color: #fff;
+    line-height: 18px; font-size: 12px;
+    margin-right: 8px;
+  }
+
+  /* ---------- The diagnosis split-screen ---------- */
+  .split {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 18px;
+    align-items: stretch;
+  }
+  @media (max-width: 760px) {
+    .split { grid-template-columns: 1fr; }
+    .split .arrow-col { display: none; }
+  }
+  .browser-window {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    display: flex; flex-direction: column;
+  }
+  .browser-window__bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--line);
+  }
+  .browser-window__bar .dot { width: 10px; height: 10px; border-radius: 50%; background: #e2e8f0; }
+  .browser-window__bar .dot.r { background: #fca5a5; }
+  .browser-window__bar .dot.y { background: #fcd34d; }
+  .browser-window__bar .dot.g { background: #86efac; }
+  .browser-window__url {
+    margin-left: 10px; flex: 1;
+    padding: 4px 10px;
+    background: #fff; border: 1px solid var(--line); border-radius: 6px;
+    font-size: 11.5px; color: var(--muted);
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .browser-window__body {
+    flex: 1;
+    padding: 14px;
+    font-size: 12.5px;
+    color: var(--ink-2);
+    background: #fafafa;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .browser-window__tag {
+    align-self: flex-start;
+    font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px;
+    letter-spacing: .04em;
+  }
+  .browser-window__tag.alive {
+    background: var(--success-soft); color: #065f46;
+  }
+  .browser-window__tag.dead {
+    background: var(--error-soft); color: #991b1b;
+  }
+  .browser-window__contentscript {
+    background: #fff;
+    border: 1px dashed var(--line-strong);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 11.5px;
+    line-height: 1.5;
+  }
+  .browser-window__contentscript .label {
+    font-weight: 700;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .browser-window__contentscript .item {
+    color: var(--success);
+    margin: 2px 0;
+  }
+  .browser-window__contentscript .item.dead {
+    color: var(--error);
+    text-decoration: line-through;
+    opacity: 0.7;
+  }
+  .arrow-col {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--primary);
+    font-size: 24px;
+    font-weight: 700;
+  }
+  .arrow-col .arrow {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px;
+  }
+  .arrow-col .arrow span {
+    font-size: 10px;
+    background: var(--primary);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: .04em;
+  }
+
+  /* ---------- Lifecycle diagram ---------- */
+  .lifecycle {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 22px;
+    box-shadow: var(--shadow-sm);
+  }
+  .lifecycle ol {
+    list-style: none;
+    margin: 0; padding: 0;
+    counter-reset: lc;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .lifecycle li {
+    position: relative;
+    padding-left: 44px;
+    counter-increment: lc;
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+  .lifecycle li::before {
+    content: counter(lc);
+    position: absolute;
+    left: 0; top: 0;
+    width: 30px; height: 30px;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px;
+  }
+  .lifecycle li b { color: var(--ink); }
+  .lifecycle li .badge-lc {
+    display: inline-block;
+    margin-right: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: var(--ink-2);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    vertical-align: 1px;
+  }
+  .lifecycle li .badge-lc.alive { background: var(--success-soft); color: #065f46; }
+  .lifecycle li .badge-lc.dead { background: var(--error-soft); color: #991b1b; }
+  .lifecycle li .badge-lc.new { background: var(--info-soft); color: #075985; }
+
+  /* ---------- Fix cards ---------- */
+  .fixes {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  @media (max-width: 720px) { .fixes { grid-template-columns: 1fr; } }
+  .fix {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: var(--shadow-sm);
+    position: relative;
+  }
+  .fix__num {
+    position: absolute;
+    top: 18px; right: 20px;
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--primary-soft);
+    line-height: 1;
+  }
+  .fix h3 { margin: 0 0 4px; font-size: 16px; }
+  .fix .where {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: ui-monospace, Menlo, monospace;
+    margin-bottom: 10px;
+  }
+  .fix p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+  .fix ul { margin: 8px 0 0; padding-left: 20px; font-size: 13px; color: var(--ink-2); }
+  .fix ul li { margin: 2px 0; }
+
+  /* ---------- After replay (with fix) ---------- */
+  .chat-after {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: var(--shadow-md);
+    max-width: 460px;
+    margin-top: 14px;
+  }
+  .chat-after .entry {
+    display: flex; gap: 10px; padding: 5px 0; align-items: flex-start;
+  }
+  .chat-after .entry__avatar {
+    flex-shrink: 0;
+    width: 28px; height: 28px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: #b91c1c;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700;
+    margin-top: 3px;
+  }
+  .chat-after .entry__avatar.info {
+    background: var(--info-soft); color: #075985;
+  }
+  .chat-after .entry__avatar.success {
+    background: var(--success-soft); color: #065f46;
+  }
+  .chat-after .bubble {
+    background: #fff;
+    border: 1px solid var(--line);
+    padding: 8px 12px;
+    border-radius: 10px;
+    border-bottom-left-radius: 3px;
+    font-size: 13px;
+    color: var(--ink-2);
+    max-width: 320px;
+  }
+  .chat-after .bubble.new {
+    background: var(--info-soft);
+    border-color: #bae6fd;
+    color: #075985;
+  }
+  .chat-after .meta {
+    font-size: 11px; color: var(--success); margin: 4px 0 0 4px;
+  }
+  .chat-after .meta.nav { color: #075985; }
+  .chat-after .sys {
+    text-align: center; font-size: 11.5px; color: var(--muted); font-style: italic;
+    padding: 3px 0;
+  }
+
+  /* ---------- Code block ---------- */
+  pre.code {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 12.5px;
+    line-height: 1.65;
+    overflow: auto;
+    margin: 14px 0 0;
+  }
+  pre.code .c { color: #64748b; font-style: italic; }
+  pre.code .k { color: #f472b6; }
+  pre.code .s { color: #86efac; }
+  pre.code .n { color: #fca5a5; }
+  pre.code .v { color: #fcd34d; }
+
+  /* ---------- Checklist ---------- */
+  .check-list {
+    list-style: none; padding: 0; margin: 14px 0 0;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .check-list li {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px 10px 36px;
+    position: relative;
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+  .check-list li::before {
+    content: ""; position: absolute;
+    left: 12px; top: 14px;
+    width: 14px; height: 14px;
+    border: 2px solid var(--success);
+    border-radius: 3px;
+    background: var(--success-soft);
+  }
+  .check-list li::after {
+    content: ""; position: absolute;
+    left: 15px; top: 16px;
+    width: 5px; height: 8px;
+    border: solid var(--success);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+
+  /* ---------- Footer ---------- */
+  footer {
+    padding: 32px 0 56px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  footer .row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 16px; flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="badge">Post-mortem · なぜ止まったのか</span>
+    <h1 class="title">クリックひとつで<br><span class="accent">脳死</span>していた。</h1>
+    <p class="lede">
+      GitHubで「ダッシュボード」をクリックした瞬間、ブラウザがページ遷移してしまい、
+      操作を担っていた<b>コンテンツスクリプトが破棄</b>されました。
+      新しいページのコンテンツスクリプトは「今、自動化が走っている最中だ」ということを知らないので、
+      何も起きないまま無音で止まる──これが今回の原因です。
+    </p>
+  </div>
+</header>
+
+<!-- ========== 起きていたこと ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">起きていたこと</div>
+    <h2 class="section-title">スクリーンショットを再現</h2>
+    <p class="section-desc">
+      ステップ1「Navigate to Projects section」開始。1件目のクリックは成功（detail に <code>clicked 'Go to uepo2003 dashboard'</code> が出ている）。
+      ところがその次のクリックには <b>detail 行が無く</b>、そのまま無音で止まりました。
+    </p>
+
+    <div class="chat-replay" aria-hidden="true">
+      <div class="entry entry--sys">プランを承認しました。</div>
+      <div class="entry entry--sys">実行開始。</div>
+      <div class="entry entry--sys">ステップ1開始</div>
+
+      <div class="entry">
+        <div class="entry__avatar">AT</div>
+        <div>
+          <div class="bubble">Starting step…</div>
+          <div class="meta">Navigate to Projects section</div>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="entry__avatar">AT</div>
+        <div>
+          <div class="bubble">Clicking the dashboard button to access the projects area</div>
+          <div class="meta ok">clicked 'Go to uepo2003 dashboard' ✓</div>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="entry__avatar">AT</div>
+        <div>
+          <div class="bubble">Clicking on Dashboard link to access the Projects section</div>
+          <!-- meta行なし — クリック発火していない -->
+        </div>
+      </div>
+
+      <div class="death-marker">ここで一切の動きが止まる（最大で数分待っても何も起きない）</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 何が起きたか ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">何が起きたか</div>
+    <h2 class="section-title">クリックがページ遷移を引き起こした</h2>
+    <p class="section-desc">
+      最初のクリック「Go to uepo2003 dashboard」は <b>普通のリンクへのクリック</b>でした。
+      クリックの瞬間、GitHubは <code>/uepo2003</code> という別ページへナビゲーションを開始します。
+      ナビゲーションが完了するとブラウザは古いページを破棄します──
+      コンテンツスクリプトもその一部です。
+    </p>
+
+    <div class="split">
+      <div class="browser-window">
+        <div class="browser-window__bar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="browser-window__url">github.com</span>
+        </div>
+        <div class="browser-window__body">
+          <span class="browser-window__tag alive">CONTENT SCRIPT: 生存中</span>
+          <div class="browser-window__contentscript">
+            <div class="label">注入中</div>
+            <div class="item">✓ cursor.js</div>
+            <div class="item">✓ dom-analyzer.js</div>
+            <div class="item">✓ action-executor.js</div>
+            <div class="item">✓ main.js（実行中の step ループ）</div>
+          </div>
+          <p style="margin: 8px 0 0; font-size: 11.5px;">
+            AI が「ダッシュボードをクリック」と指示 →
+            <code>element.click()</code> 発火 →
+            ブラウザがリンクをたどり始める…
+          </p>
+        </div>
+      </div>
+
+      <div class="arrow-col" aria-hidden="true">
+        <div class="arrow">
+          →
+          <span>NAVIGATE</span>
+        </div>
+      </div>
+
+      <div class="browser-window">
+        <div class="browser-window__bar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="browser-window__url">github.com/uepo2003</span>
+        </div>
+        <div class="browser-window__body">
+          <span class="browser-window__tag dead">CONTENT SCRIPT: 破棄→再注入</span>
+          <div class="browser-window__contentscript">
+            <div class="label">前の世界（消滅）</div>
+            <div class="item dead">cursor.js</div>
+            <div class="item dead">dom-analyzer.js</div>
+            <div class="item dead">action-executor.js</div>
+            <div class="item dead">main.js（step ループ含む）</div>
+          </div>
+          <div class="browser-window__contentscript">
+            <div class="label">新しい世界</div>
+            <div class="item">✓ cursor.js（フレッシュ）</div>
+            <div class="item">✓ dom-analyzer.js（フレッシュ）</div>
+            <div class="item">✓ action-executor.js（フレッシュ）</div>
+            <div class="item">✓ main.js（<b>runMode = null</b>）</div>
+          </div>
+          <p style="margin: 8px 0 0; font-size: 11.5px; color: var(--error);">
+            <b>新しいスクリプトは「自動化中である」ことを知らない。</b>
+            だれも次のアクションを要求しないので、永遠に止まる。
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== なぜ起きたか（仕組み） ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">仕組み</div>
+    <h2 class="section-title">Manifest V3 コンテンツスクリプトの寿命</h2>
+    <p class="section-desc">
+      Chrome 拡張機能のコンテンツスクリプトは <b>「そのページのライフサイクル」と一蓮托生</b>です。
+      ページが消えればスクリプトも消えます。今回はこの仕様を踏み抜きました。
+    </p>
+
+    <div class="lifecycle">
+      <ol>
+        <li><span class="badge-lc alive">alive</span><b>ユーザーが github.com を開く</b> → 拡張機能のコンテンツスクリプトが注入され、main.js の IIFE が実行</li>
+        <li><span class="badge-lc alive">alive</span><b>Side Panel から STEP_START が届く</b> → handleStepStart が走り、runMode = 'step'、ステップループ開始</li>
+        <li><span class="badge-lc alive">alive</span><b>AI 呼び出し → クリックを返す</b> → action-executor が実クリック発火</li>
+        <li><span class="badge-lc dead">dead</span><b>クリックがリンクをたどる</b> → ブラウザがナビゲーションを開始 → 古いページの全 JavaScript コンテキストが破棄される（setTimeout も Promise も）</li>
+        <li><span class="badge-lc new">new</span><b>新しいページが読み込まれる</b> → 拡張機能のコンテンツスクリプトが<b>再注入</b>される → main.js が再実行されるが <b>runMode は null</b>（IIFE スコープが新しい）</li>
+        <li><span class="badge-lc dead">dead</span><b>誰も次のアクションを要求しない</b> → 新しい main.js は STEP_START を受け取っていないのでループを開始しない → <b>無音停止</b></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 直したこと ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">修正</div>
+    <h2 class="section-title">4つの修正で確実に進行＆失敗が見える化</h2>
+    <p class="section-desc">
+      二度と「無音停止」を起こさないため、原因対処（自動再開）と症状対処（明示化）の両面から手を入れました。
+    </p>
+
+    <div class="fixes">
+      <div class="fix">
+        <div class="fix__num">①</div>
+        <h3>ナビゲーション自動再開</h3>
+        <div class="where">background/service-worker.js</div>
+        <p>
+          <code>chrome.tabs.onUpdated</code> リスナーで、実行中のタブが <code>status: 'complete'</code> になったことを検知 →
+          <b>同じ stepIndex で STEP_START を再送</b>。
+          新しいページのコンテンツスクリプトがちゃんとループ再開できる。
+        </p>
+        <ul>
+          <li>800ms のデバウンスで重複防止</li>
+          <li>1ランで最大 8 回までナビゲーションを許可（無限ループ防止）</li>
+        </ul>
+      </div>
+
+      <div class="fix">
+        <div class="fix__num">②</div>
+        <h3>失敗の明示 narration</h3>
+        <div class="where">content/main.js → sidepanel</div>
+        <p>
+          今までは「silent noop」で消えていた以下のケースを、<b>赤い「!」アバター付きで必ずチャット表示</b>。
+        </p>
+        <ul>
+          <li><code>Couldn't find target on page</code> — targetId が解決できない</li>
+          <li><code>Action didn't take effect</code> — クリックは発火したが効いてない</li>
+          <li><code>Reached max iterations</code> — 6回試行で進展なし</li>
+          <li><code>Couldn't make progress</code> — 連続ノーオペ上限</li>
+        </ul>
+      </div>
+
+      <div class="fix">
+        <div class="fix__num">③</div>
+        <h3>構造化エラーログ</h3>
+        <div class="where">common/error-capture.js → options</div>
+        <p>
+          すべての <code>warn()</code> が自動的に <b>200件の dev log リングバッファ</b>に集約。
+          Options ページの <b>Developer セクション</b>で確認できる。
+        </p>
+        <ul>
+          <li>ソース別カラータグ (content / sidepanel / background)</li>
+          <li>ms 精度タイムスタンプ・スタックトレース折りたたみ</li>
+          <li>新規エラーは Auto-refresh で即時追加表示</li>
+        </ul>
+      </div>
+
+      <div class="fix">
+        <div class="fix__num">④</div>
+        <h3>ライブ思考インジケータ</h3>
+        <div class="where">sidepanel + background</div>
+        <p>
+          AI 呼び出し中は <code>●●● Claude に問い合わせ中… Xs</code> の生きてるインジケータが出る。
+          25秒経つと <b>明確にタイムアウト</b>。
+          「考えてるのか壊れたのか分からない」ストレスを排除。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ビフォー/アフター ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">ビフォー / アフター</div>
+    <h2 class="section-title">同じシナリオが、こう変わる</h2>
+    <p class="section-desc">
+      ダッシュボードをクリック → ページ遷移 → 新ページで Projects タブを探す、というフロー。
+    </p>
+
+    <div class="chat-after" aria-hidden="true">
+      <div class="sys">ステップ1開始</div>
+      <div class="entry">
+        <div class="entry__avatar">AT</div>
+        <div>
+          <div class="bubble">Starting step…</div>
+          <div class="meta" style="color:var(--muted)">Navigate to Projects section</div>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="entry__avatar">AT</div>
+        <div>
+          <div class="bubble">●●● Claude に問い合わせ中…  3s</div>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="entry__avatar success">AT</div>
+        <div>
+          <div class="bubble">Clicking the dashboard button</div>
+          <div class="meta">clicked 'Go to uepo2003 dashboard'</div>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="entry__avatar info">i</div>
+        <div>
+          <div class="bubble new">Page navigated — resuming step</div>
+          <div class="meta nav">→ github.com/uepo2003</div>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="entry__avatar">AT</div>
+        <div>
+          <div class="bubble">●●● Claude に問い合わせ中…  4s</div>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="entry__avatar success">AT</div>
+        <div>
+          <div class="bubble">Clicking the Projects tab</div>
+          <div class="meta">clicked 'Projects'</div>
+        </div>
+      </div>
+      <div class="sys">✓ Step 1 完了</div>
+      <div class="sys">Step 2 開始</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== コード差分 ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">コード変更（要点）</div>
+    <h2 class="section-title">背景SWに追加した16行</h2>
+    <p class="section-desc">
+      原因対処の核は <code>chrome.tabs.onUpdated</code> リスナー1個です。
+    </p>
+
+<pre class="code"><span class="c">// background/service-worker.js</span>
+<span class="n">chrome</span>.<span class="n">tabs</span>.<span class="v">onUpdated</span>.<span class="v">addListener</span>((tabId, changeInfo, tab) =&gt; {
+  <span class="k">if</span> (changeInfo.status !== <span class="s">'complete'</span>) <span class="k">return</span>;
+  <span class="k">const</span> run = runByTab.<span class="v">get</span>(tabId);
+  <span class="k">if</span> (!run || run.status !== <span class="s">'running'</span>) <span class="k">return</span>;
+  <span class="k">if</span> (!<span class="n">Array</span>.<span class="v">isArray</span>(run.plan)) <span class="k">return</span>;
+  <span class="k">if</span> (run.currentStepIndex &gt;= run.plan.length) <span class="k">return</span>;
+
+  <span class="c">// loop guard + debounce omitted...</span>
+
+  <span class="n">broadcastToSidepanel</span>({
+    <span class="n">type</span>: <span class="n">MSG</span>.<span class="v">STEP_PROGRESS</span>,
+    <span class="n">narration</span>: <span class="s">'Page navigated — resuming step'</span>,
+    <span class="n">action</span>: <span class="s">'navigated'</span>,
+    <span class="n">detail</span>: tab.url,
+  });
+
+  <span class="c">// Wait for content scripts to inject, then re-emit STEP_START.</span>
+  <span class="v">setTimeout</span>(() =&gt; {
+    <span class="n">chrome</span>.<span class="n">tabs</span>.<span class="v">sendMessage</span>(tabId, {
+      <span class="n">type</span>: <span class="n">MSG</span>.<span class="v">STEP_START</span>,
+      <span class="n">stepIndex</span>: run.currentStepIndex,
+      <span class="n">step</span>: run.plan[run.currentStepIndex],
+      <span class="n">reason</span>: <span class="s">'page_navigated'</span>,
+    });
+  }, <span class="v">600</span>);
+});</pre>
+  </div>
+</section>
+
+<!-- ========== 動作確認 ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">動作確認</div>
+    <h2 class="section-title">直ったか試すチェックリスト</h2>
+
+    <ul class="check-list">
+      <li><b>拡張機能を🔄リロード</b>（オプション画面だけ閉じ直しでは不十分。<code>chrome://extensions</code> の reload アイコンを必ず）</li>
+      <li>テストするタブを <kbd>Cmd</kbd>+<kbd>R</kbd> で再読み込み</li>
+      <li>Side Panel を一度閉じて再オープン</li>
+      <li>同じゴール「新規プロジェクト作成して」で Send</li>
+      <li>ダッシュボードクリック後、<b>「Page navigated — resuming step」</b>がチャットに出るか確認</li>
+      <li>もし途中で止まったら <b>赤い ! アバター</b>の narration が出ているか確認</li>
+      <li>Options → Developer セクションでエラー詳細を確認</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <div>Browser Copilot · Post-mortem: 2026-05-14 incident</div>
+      <div>関連: <code>docs/overview.html</code> · <code>docs/setup.html</code></div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

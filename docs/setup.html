@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Browser Copilot — 開発環境セットアップ</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #fafafa;
+    --ink: #0f172a;
+    --ink-2: #475569;
+    --muted: #94a3b8;
+    --line: #e2e8f0;
+    --line-strong: #cbd5e1;
+    --primary: #ef4444;
+    --primary-soft: #fee2e2;
+    --primary-hover: #dc2626;
+    --success: #10b981;
+    --success-soft: #d1fae5;
+    --warn: #f59e0b;
+    --warn-soft: #fef3c7;
+    --error: #dc2626;
+    --error-soft: #fee2e2;
+    --code-bg: #0f172a;
+    --code-ink: #e2e8f0;
+    --shadow-sm: 0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03);
+    --shadow-md: 0 6px 24px rgba(15,23,42,.06), 0 2px 6px rgba(15,23,42,.04);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+                 "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI",
+                 Meiryo, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+  code, pre, kbd {
+    font-family: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+  }
+  :not(pre) > code {
+    background: #f1f5f9; color: #0f172a;
+    padding: 2px 6px; border-radius: 4px;
+    font-size: .88em;
+  }
+  kbd {
+    background: #fff; border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px; padding: 1px 6px;
+    font-size: .82em; color: var(--ink);
+  }
+  a { color: var(--primary); text-decoration: none; border-bottom: 1px dashed var(--primary-soft); }
+  a:hover { border-bottom-style: solid; }
+
+  /* ---------- Header / Hero ---------- */
+  header.hero {
+    padding: 56px 0 40px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(900px 360px at 90% -80px, var(--primary-soft), transparent 70%),
+      linear-gradient(180deg, #fff 0%, var(--bg-soft) 100%);
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12px;
+    color: var(--ink-2);
+    letter-spacing: .04em;
+  }
+  .badge::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 4px var(--primary-soft);
+  }
+  h1.title {
+    margin: 16px 0 8px;
+    font-size: 38px;
+    line-height: 1.18;
+    letter-spacing: -.02em;
+    font-weight: 700;
+  }
+  h1 .accent { color: var(--primary); }
+  p.lede {
+    margin: 0;
+    max-width: 640px;
+    font-size: 16px;
+    color: var(--ink-2);
+  }
+  .toc {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  @media (max-width: 720px) {
+    .toc { grid-template-columns: repeat(2, 1fr); }
+  }
+  .toc a {
+    border: 1px solid var(--line);
+    background: #fff;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .toc a:hover { border-color: var(--primary); color: var(--primary); }
+  .toc a .n { color: var(--primary); font-weight: 700; margin-right: 6px; }
+
+  /* ---------- Section ---------- */
+  section { padding: 56px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+  .eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--primary);
+  }
+  h2.section-title {
+    margin: 6px 0 12px;
+    font-size: 26px; letter-spacing: -.015em; font-weight: 700;
+  }
+  p.section-desc { margin: 0 0 24px; color: var(--ink-2); max-width: 700px; }
+
+  /* ---------- Steps (numbered cards) ---------- */
+  .steps {
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .step {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px 18px 64px;
+    position: relative;
+    box-shadow: var(--shadow-sm);
+  }
+  .step::before {
+    content: attr(data-n);
+    position: absolute;
+    left: 18px; top: 16px;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--primary); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+    box-shadow: 0 0 0 4px var(--primary-soft);
+  }
+  .step h3 { margin: 0 0 6px; font-size: 16px; }
+  .step p { margin: 0; color: var(--ink-2); font-size: 14px; }
+  .step ul, .step ol { margin: 6px 0 0; padding-left: 20px; font-size: 14px; color: var(--ink-2); }
+  .step ul li, .step ol li { margin: 2px 0; }
+
+  /* ---------- Code block ---------- */
+  pre.code {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 12.5px;
+    line-height: 1.65;
+    overflow: auto;
+    margin: 12px 0 0;
+  }
+  pre.code .c { color: #64748b; font-style: italic; }
+  pre.code .k { color: #f472b6; }
+  pre.code .s { color: #86efac; }
+  pre.code .n { color: #fca5a5; }
+  pre.code .v { color: #fcd34d; }
+
+  /* ---------- Checklist ---------- */
+  .checklist { list-style: none; padding: 0; margin: 6px 0 0; }
+  .checklist li {
+    padding: 4px 0 4px 28px;
+    position: relative;
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+  .checklist li::before {
+    content: ""; position: absolute;
+    left: 0; top: 11px;
+    width: 14px; height: 14px;
+    border: 2px solid var(--success);
+    border-radius: 3px;
+    background: var(--success-soft);
+  }
+  .checklist li::after {
+    content: "";
+    position: absolute; left: 3px; top: 13px;
+    width: 5px; height: 8px;
+    border: solid var(--success);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+
+  /* ---------- Browser mock ---------- */
+  .mock {
+    margin-top: 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: var(--shadow-md);
+  }
+  .mock .bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 9px 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--line);
+  }
+  .mock .dot { width: 10px; height: 10px; border-radius: 50%; background: #e2e8f0; }
+  .mock .dot.r { background: #fca5a5; } .mock .dot.y { background: #fcd34d; } .mock .dot.g { background: #86efac; }
+  .mock .url {
+    margin-left: 10px; flex: 1;
+    background: #fff; border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 10px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    color: var(--ink-2);
+  }
+  .mock .body { padding: 16px; font-size: 13px; color: var(--ink-2); background: #fafafa; }
+  .mock .ext-card {
+    background: #fff; border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .mock .ext-card .icon {
+    width: 36px; height: 36px; border-radius: 6px;
+    background: var(--primary); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .mock .ext-card .meta { flex: 1; }
+  .mock .ext-card .meta strong { display: block; font-size: 13px; color: var(--ink); }
+  .mock .ext-card .meta span { font-size: 11px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+  .mock .ext-card button {
+    background: #f1f5f9; border: 1px solid var(--line);
+    border-radius: 6px; padding: 4px 10px; font-size: 12px; color: var(--ink-2);
+    font-family: inherit;
+  }
+  .mock .toggle {
+    margin-left: auto;
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--ink-2);
+  }
+  .mock .toggle .switch {
+    width: 28px; height: 16px; border-radius: 999px;
+    background: var(--success);
+    position: relative;
+  }
+  .mock .toggle .switch::after {
+    content: ""; position: absolute;
+    right: 2px; top: 2px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #fff;
+  }
+
+  /* ---------- Chat mock (copilot test scenario) ---------- */
+  .chat-mock {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    max-width: 380px;
+    margin-top: 14px;
+  }
+  .chat-mock .chat-top {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: #f8fafc;
+  }
+  .chat-mock .chat-top .dot-r {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 4px var(--success-soft);
+  }
+  .chat-mock .chat-top .t { font-size: 13px; font-weight: 600; }
+  .chat-mock .chat-top .host { margin-left: auto; font-size: 11px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+  .chat-mock .chat-body {
+    padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    background: #fafafa;
+  }
+  .bubble {
+    max-width: 86%;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .bubble.user {
+    align-self: flex-end;
+    background: var(--primary-soft); color: #7f1d1d;
+    border-bottom-right-radius: 3px;
+  }
+  .bubble.agent {
+    background: #fff; border: 1px solid var(--line);
+    color: var(--ink-2);
+    border-bottom-left-radius: 3px;
+  }
+  .bubble.system {
+    align-self: center;
+    color: var(--muted);
+    font-size: 11px; font-style: italic;
+  }
+  .confirm-card {
+    background: #fff; border: 1px solid var(--primary);
+    border-radius: 10px; padding: 10px 12px;
+    font-size: 12.5px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .confirm-card .h { font-weight: 700; color: #b91c1c; font-size: 12px; }
+  .row-buttons { display: flex; gap: 6px; }
+  .mini-btn {
+    font-size: 11px; font-weight: 600;
+    padding: 5px 10px; border-radius: 6px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink-2);
+    cursor: default;
+  }
+  .mini-btn.primary {
+    background: var(--primary); color: #fff; border-color: var(--primary);
+  }
+
+  /* ---------- Cards (devtools) ---------- */
+  .cards {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+    margin-top: 6px;
+  }
+  @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .card .where {
+    font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--primary);
+  }
+  .card h4 { margin: 4px 0 6px; font-size: 14px; }
+  .card p { margin: 0; font-size: 13px; color: var(--ink-2); }
+  .card .how {
+    margin-top: 8px;
+    font-size: 12.5px;
+    color: var(--ink);
+    background: #f8fafc;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 10px;
+    line-height: 1.5;
+  }
+
+  /* ---------- Table ---------- */
+  table.trouble {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px; overflow: hidden;
+    margin-top: 8px;
+    font-size: 13.5px;
+  }
+  table.trouble th, table.trouble td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    text-align: left;
+  }
+  table.trouble thead th {
+    background: #f8fafc;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  table.trouble tbody tr:last-child td { border-bottom: none; }
+  table.trouble .sym {
+    font-weight: 600;
+    color: var(--ink);
+    width: 38%;
+  }
+  table.trouble .sym .tag {
+    display: inline-block; margin-right: 6px;
+    font-size: 10px; font-weight: 700;
+    padding: 1px 6px; border-radius: 999px;
+    background: var(--error-soft); color: var(--error);
+    text-transform: uppercase; letter-spacing: .06em;
+    vertical-align: 1px;
+  }
+  table.trouble .sym .tag.warn { background: var(--warn-soft); color: #92400e; }
+  @media (max-width: 720px) {
+    table.trouble { font-size: 12.5px; }
+    table.trouble .sym { width: 50%; }
+  }
+
+  /* ---------- Callout ---------- */
+  .callout {
+    margin-top: 14px;
+    background: var(--warn-soft);
+    border: 1px solid #fde68a;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: #78350f;
+  }
+  .callout.tip {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1e40af;
+  }
+  .callout strong { display: block; margin-bottom: 2px; }
+
+  /* ---------- Footer ---------- */
+  footer {
+    padding: 32px 0 48px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  footer .row {
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="badge">Setup Guide · Browser Copilot · v0.2.0</span>
+    <h1 class="title">開発環境で<span class="accent">試す手順</span></h1>
+    <p class="lede">
+      未署名の拡張機能としてChromeに読み込み、APIキーを入れて、QuickSkipとCopilotの2モードを通すまでの最短ルートです。
+      所要時間およそ5〜10分。
+    </p>
+
+    <nav class="toc">
+      <a href="#prereq"><span class="n">0</span>前提</a>
+      <a href="#install"><span class="n">1</span>読み込み</a>
+      <a href="#apikey"><span class="n">2</span>APIキー</a>
+      <a href="#test"><span class="n">3</span>動作確認</a>
+      <a href="#devtools"><span class="n">4</span>DevTools</a>
+      <a href="#console"><span class="n">5</span>Console</a>
+      <a href="#reload"><span class="n">6</span>編集→反映</a>
+      <a href="#trouble"><span class="n">7</span>トラブル</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ========== 0. 前提 ========== -->
+<section id="prereq">
+  <div class="wrap">
+    <div class="eyebrow">Step 0</div>
+    <h2 class="section-title">前提を満たす</h2>
+    <p class="section-desc">
+      Side Panel API を使うので <b>Chrome 114以上</b> が必要です。APIキーは事前に発行しておきます（クレジット設定が必要）。
+    </p>
+
+    <ul class="checklist">
+      <li>Chrome 114以上（<code>chrome://version</code> で確認）</li>
+      <li>Anthropic コンソールでAPIキー発行（<a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a>）— <code>sk-ant-…</code></li>
+      <li>クレジット残高が少しある（Haikuなら数円〜数十円で動作確認できます）</li>
+      <li>ローカルにこのリポジトリがある</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ========== 1. 読み込み ========== -->
+<section id="install">
+  <div class="wrap">
+    <div class="eyebrow">Step 1</div>
+    <h2 class="section-title">拡張機能をChromeに読み込む</h2>
+
+    <div class="steps">
+      <div class="step" data-n="1">
+        <h3>Chromeで <code>chrome://extensions</code> を開く</h3>
+        <p>新しいタブのアドレスバーに直接貼り付けて移動。</p>
+      </div>
+      <div class="step" data-n="2">
+        <h3>右上の「デベロッパーモード」をオンにする</h3>
+        <p>トグルスイッチが緑になれば成功。読み込み用のボタン群が表示されます。</p>
+      </div>
+      <div class="step" data-n="3">
+        <h3>「パッケージ化されていない拡張機能を読み込む」を選択</h3>
+        <p>フォルダ選択ダイアログで <code>auto-tutorial-extension/</code> を指定。</p>
+      </div>
+      <div class="step" data-n="4">
+        <h3>拡張カードが表示されたら成功</h3>
+        <p>ツールバーの右側にある拡張アイコン → ピン留めしておくと以降の操作が楽です。</p>
+
+        <div class="mock" aria-hidden="true">
+          <div class="bar">
+            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+            <span class="url">chrome://extensions</span>
+          </div>
+          <div class="body">
+            <div class="ext-card">
+              <div class="icon">AT</div>
+              <div class="meta">
+                <strong>Browser Copilot</strong>
+                <span>v0.2.0 · ID: dljimg…</span>
+              </div>
+              <button>サービスワーカー</button>
+              <button>詳細</button>
+              <div class="toggle">有効<span class="switch"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>⚠ アイコン読み込みエラーが出たら</strong>
+      <code>icons/icon16.png</code> 等が存在するか確認してください（Pillow生成済みなので通常はOK）。
+    </div>
+  </div>
+</section>
+
+<!-- ========== 2. APIキー ========== -->
+<section id="apikey">
+  <div class="wrap">
+    <div class="eyebrow">Step 2</div>
+    <h2 class="section-title">Anthropic APIキーを設定する</h2>
+
+    <div class="steps">
+      <div class="step" data-n="1">
+        <h3>オプションページを開く</h3>
+        <p>ツールバーの拡張アイコン → ポップアップ下部の <b>Settings ⚙</b>。<br>
+           または <code>chrome://extensions</code> → この拡張の <b>詳細</b> → <b>拡張機能のオプション</b>。</p>
+      </div>
+      <div class="step" data-n="2">
+        <h3>「Anthropic API key」にキーを貼り付け → Save</h3>
+        <p>キーは <code>chrome.storage.local</code> にのみ保存されます。ネットワークに出るのは API リクエストヘッダのみ。</p>
+      </div>
+      <div class="step" data-n="3">
+        <h3>「Test connection」で疎通確認</h3>
+        <p>緑の「OK」が出れば成功。失敗時は次の状態を確認：</p>
+        <ul>
+          <li><code>http_401</code> → キー誤り</li>
+          <li><code>http_429</code> → レート制限／クレジット枠不足</li>
+          <li><b>Network error</b> → オフライン or プロキシ問題</li>
+        </ul>
+      </div>
+      <div class="step" data-n="4">
+        <h3>(任意) Mode / Speed / Model を調整</h3>
+        <p>初期値（Hybrid / Normal / <code>claude-haiku-4-5-20251001</code>）でまず動かしてOKです。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 3. 動作確認 ========== -->
+<section id="test">
+  <div class="wrap">
+    <div class="eyebrow">Step 3</div>
+    <h2 class="section-title">2つのモードで動作確認</h2>
+
+    <h3 style="font-size:18px; margin: 14px 0 6px;">モードA: Quick skip（オンボーディング自動突破）</h3>
+    <div class="steps">
+      <div class="step" data-n="A1">
+        <h3>チュートリアル画面のあるサイトを開く</h3>
+        <p>新規アカウント作成直後のNotion / Linear / Figma などが分かりやすい。</p>
+      </div>
+      <div class="step" data-n="A2">
+        <h3>拡張アイコン → 「Quick skip onboarding」</h3>
+        <p>赤い疑似カーソルが現れ、Next / Got it / OK 系を自動でクリックして進めます。</p>
+      </div>
+      <div class="step" data-n="A3">
+        <h3>停止は同じボタンの「Stop」</h3>
+        <p>または30回／連続6回ノーオペの安全装置で自動停止します。</p>
+      </div>
+    </div>
+
+    <h3 style="font-size:18px; margin: 28px 0 6px;">モードB: Copilot（ゴール駆動）</h3>
+    <div class="steps">
+      <div class="step" data-n="B1">
+        <h3>任意のサイト（例：<code>github.com</code>）を開く</h3>
+        <p>ログイン状態であることが前提（拡張機能はあなたのセッションを利用します）。</p>
+      </div>
+      <div class="step" data-n="B2">
+        <h3>拡張アイコン → 「Open Copilot →」</h3>
+        <p>Chromeの右側に Side Panel が開きます。</p>
+      </div>
+      <div class="step" data-n="B3">
+        <h3>テキストエリアにゴール文を入力 → Send</h3>
+        <p>例：「<code>GitHubでdemo-appという名前のプライベートリポジトリを作って</code>」</p>
+
+        <div class="chat-mock" aria-hidden="true">
+          <div class="chat-top">
+            <span class="dot-r"></span>
+            <span class="t">Browser Copilot</span>
+            <span class="host">github.com</span>
+          </div>
+          <div class="chat-body">
+            <div class="bubble user">demo-app という Private リポジトリを作って</div>
+            <div class="bubble system">Plan ready (4 steps)</div>
+            <div class="bubble agent">名前欄に <b>demo-app</b> を入力します。</div>
+            <div class="bubble system">Step 4 — confirmation required</div>
+            <div class="confirm-card">
+              <div class="h">⚠ Create repository を押そうとしています</div>
+              <div>この操作は不可逆です。GitHubにリポジトリが作成されます。</div>
+              <div class="row-buttons">
+                <button class="mini-btn primary">Approve</button>
+                <button class="mini-btn">Skip step</button>
+              </div>
+            </div>
+            <div class="bubble system">✓ Run complete</div>
+          </div>
+        </div>
+      </div>
+      <div class="step" data-n="B4">
+        <h3>プランカードを確認して Approve</h3>
+        <p>高リスクステップは赤い左ボーダーで強調されます。「Approve」で実行開始。</p>
+      </div>
+      <div class="step" data-n="B5">
+        <h3>進行中、必要に応じて返答／承認</h3>
+        <ul>
+          <li>値を聞かれたら入力（例：説明文、リポジトリ名）</li>
+          <li>不可逆操作は承認カードで止まります — <b>Approve</b> / <b>Skip step</b></li>
+          <li>いつでも上部の <b>Stop</b> で中断可能</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <strong>💡 まず安全に試すなら</strong>
+      Quick skip は本物のサイトで気軽に試せます。Copilotモードは最初は<b>低リスクなゴール</b>（「GitHubのIssue一覧を絞り込んで」「Notionで新しい空ページを作って」等）から始めると挙動が掴みやすいです。
+    </div>
+  </div>
+</section>
+
+<!-- ========== 4. DevTools ========== -->
+<section id="devtools">
+  <div class="wrap">
+    <div class="eyebrow">Step 4</div>
+    <h2 class="section-title">DevTools の開き方（5箇所）</h2>
+    <p class="section-desc">
+      拡張機能は複数のコンテキストで動くので、ログ／ブレークポイントを置く場所もそれぞれです。
+    </p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="where">Service Worker</div>
+        <h4>background/ の挙動を見る</h4>
+        <p>ルーティング、Claude呼び出し、プラン生成のログはここ。</p>
+        <div class="how">
+          <code>chrome://extensions</code> → この拡張カードの <b>「サービスワーカー」</b> リンク
+        </div>
+      </div>
+      <div class="card">
+        <div class="where">Content Script</div>
+        <h4>ページ上で動くスクリプト</h4>
+        <p>DOMアナライザ・ルール判定・アクション実行のログとデバッグ。</p>
+        <div class="how">
+          対象タブで <kbd>F12</kbd> → <b>Console</b>。<code>__AT__</code> が見えれば注入済み。
+        </div>
+      </div>
+      <div class="card">
+        <div class="where">Side Panel</div>
+        <h4>チャットUI側</h4>
+        <p>メッセージ受信・状態遷移・レンダーの確認。</p>
+        <div class="how">
+          Side Panel上で <b>右クリック → 検証</b>
+        </div>
+      </div>
+      <div class="card">
+        <div class="where">Popup</div>
+        <h4>ツールバーの小さなパネル</h4>
+        <p>Open Copilotボタンや Quick skip のロジック。</p>
+        <div class="how">
+          ポップアップを開いた状態で <b>右クリック → 検証</b>
+        </div>
+      </div>
+      <div class="card">
+        <div class="where">Storage</div>
+        <h4>APIキー・モード・速度の保存先</h4>
+        <p>値が本当に書かれているか・読まれているかの確認。</p>
+        <div class="how">
+          上のいずれかのDevTools → <b>Application</b> タブ → <b>Storage → Extension Storage</b>
+        </div>
+      </div>
+      <div class="card">
+        <div class="where">Network</div>
+        <h4>Claude API への通信</h4>
+        <p>送ったプロンプトと返ってきたJSONを直接見られる。</p>
+        <div class="how">
+          Service Worker の DevTools → <b>Network</b> → <code>api.anthropic.com</code> でフィルタ
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 5. Console snippets ========== -->
+<section id="console">
+  <div class="wrap">
+    <div class="eyebrow">Step 5</div>
+    <h2 class="section-title">Console で内部状態を覗く</h2>
+    <p class="section-desc">
+      対象タブのDevToolsコンソールで実行するとデバッグが捗ります。
+    </p>
+
+<pre class="code"><span class="c">// コンテンツスクリプトが注入されているか</span>
+<span class="n">globalThis</span>.__AT__
+<span class="c">// → { cursor, dom, action, rules, main, speedKey, rulePolicy, debug? }</span>
+
+<span class="c">// 現在の動作状態</span>
+__AT__.main.<span class="v">isRunning</span>()
+__AT__.main.<span class="v">runMode</span>()       <span class="c">// 'quick-skip' | 'step' | null</span>
+__AT__.main.<span class="v">currentStep</span>()   <span class="c">// copilot実行中ならステップ情報</span>
+__AT__.main.<span class="v">pendingAskCount</span>()
+
+<span class="c">// 詳細ログを有効化（この後の動作が console.debug に出る）</span>
+__AT__.<span class="n">debug</span> = <span class="k">true</span>
+
+<span class="c">// DOMスナップショットを手元で見る</span>
+<span class="k">const</span> snap = __AT__.dom.<span class="v">snapshot</span>()
+<span class="n">console</span>.<span class="v">table</span>(snap.interactives.slice(0, 10))
+
+<span class="c">// 疑似カーソルを単体で試す</span>
+__AT__.cursor.<span class="v">mount</span>(); __AT__.cursor.<span class="v">show</span>()
+__AT__.cursor.<span class="v">moveTo</span>(400, 300, 800).<span class="v">then</span>(() => __AT__.cursor.<span class="v">pulseClick</span>())
+__AT__.cursor.<span class="v">setLabel</span>(<span class="s">"Hello"</span>)
+
+<span class="c">// 手動でクイックスキップを発火（権限はpopup経由なので通常はpopupから）</span>
+__AT__.main._start()
+__AT__.main._stop()</pre>
+  </div>
+</section>
+
+<!-- ========== 6. 編集→反映 ========== -->
+<section id="reload">
+  <div class="wrap">
+    <div class="eyebrow">Step 6</div>
+    <h2 class="section-title">ファイル編集→Chrome反映のループ</h2>
+    <p class="section-desc">
+      コードを書き換えたあとは、必ず以下の順で反映してください。順番を間違えると古いコードが残ります。
+    </p>
+
+    <div class="steps">
+      <div class="step" data-n="1">
+        <h3>拡張機能をリロード</h3>
+        <p><code>chrome://extensions</code> を開き、この拡張カードの <b>🔄 リロードアイコン</b> をクリック。</p>
+      </div>
+      <div class="step" data-n="2">
+        <h3>対象タブも再読み込み</h3>
+        <p>コンテンツスクリプトは「拡張ロード時にすでに開いていたタブ」には自動再注入されません。<kbd>Cmd+R</kbd> でタブを更新します。</p>
+      </div>
+      <div class="step" data-n="3">
+        <h3>Side Panel を開いていれば一度閉じて開き直す</h3>
+        <p>状態をクリーンにするため。</p>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <strong>💡 ショートカット</strong>
+      <code>chrome://extensions/</code> をブックマーク or 別タブ常駐にしておくと、編集の往復が高速化します。リロード後にDevToolsを再オープンする必要がある場合も多いので注意。
+    </div>
+  </div>
+</section>
+
+<!-- ========== 7. トラブル ========== -->
+<section id="trouble">
+  <div class="wrap">
+    <div class="eyebrow">Step 7</div>
+    <h2 class="section-title">よくあるはまり所</h2>
+
+    <table class="trouble">
+      <thead>
+        <tr><th class="sym">症状</th><th>原因と対処</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="sym"><span class="tag">UI</span>Open Copilot を押してもパネルが出ない</td>
+          <td>Chrome 114未満の可能性。<code>chrome://version</code> で確認し、古ければ Chrome を更新。あるいは別ウィンドウで開いた直後はタイミング差で失敗することがあるので、もう一度押す。</td>
+        </tr>
+        <tr>
+          <td class="sym"><span class="tag">API</span>AI応答が来ない / 「No action」と表示される</td>
+          <td>Service Worker DevTools の <b>Network</b> タブで <code>api.anthropic.com</code> へのリクエストを確認。
+            <code>http_401</code> → キー誤り、<code>http_429</code> → レート/クレジット枠不足、<code>parse_error</code> → モデル応答がJSONになっていない（モデルを変えるか再試行）。</td>
+        </tr>
+        <tr>
+          <td class="sym"><span class="tag warn">DOM</span>カーソルは動くが本物のクリックが効かない</td>
+          <td>サイトが Shadow DOM の中にUIを置いている可能性。コンソールで <code>__AT__.debug = true</code> を有効化し、<code>dispatch: unresolved target</code> ログを確認。現状はトップフレームのみ対象（manifest <code>all_frames:false</code>）。</td>
+        </tr>
+        <tr>
+          <td class="sym"><span class="tag warn">DOM</span>iframe内のUIに反応しない</td>
+          <td>仕様。<code>manifest.json</code> の <code>"all_frames": true</code> に変更すれば各iframeにも注入されますが、副作用（複数カーソル等）あり。慎重に。</td>
+        </tr>
+        <tr>
+          <td class="sym"><span class="tag">URL</span><code>chrome://</code>系ページで動かない</td>
+          <td>Chrome 内部ページには拡張機能を注入できない仕様。普通の Web ページで試してください（<code>chrome-extension://</code> / <code>edge://</code> / <code>about:</code> / <code>view-source:</code> も同様）。</td>
+        </tr>
+        <tr>
+          <td class="sym"><span class="tag">SYNC</span>編集したのに挙動が変わらない</td>
+          <td>拡張のリロード忘れ。<code>chrome://extensions</code> の 🔄 を押して、<b>さらに対象タブも再読み込み</b>。</td>
+        </tr>
+        <tr>
+          <td class="sym"><span class="tag warn">MSG</span><code>Could not establish connection. Receiving end does not exist.</code></td>
+          <td>コンテンツスクリプトが入っていないタブにメッセージを送った。タブを再読み込みして注入し直す。<code>chrome://</code> 系ではこのエラーが必ず出ます。</td>
+        </tr>
+        <tr>
+          <td class="sym"><span class="tag">SW</span>Service Worker が「停止中」と表示される</td>
+          <td>仕様：MV3のSWはアイドル時に停止します。何かメッセージを送れば自動的に再起動するので問題なし。停止中にデバッグログが見えなくなるだけ。</td>
+        </tr>
+        <tr>
+          <td class="sym"><span class="tag">COST</span>APIコストが心配</td>
+          <td>Haiku 4.5 の既定設定でプラン生成1回＋ステップあたり1〜3回の呼び出し。1セッション数円〜十数円程度。Console の Network で実際のトークン数を確認可能。Anthropicコンソールで <b>Usage limits</b> を設定推奨。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <div>Browser Copilot · Setup Guide · v0.2.0</div>
+      <div>関連：<code>docs/overview.html</code>（設計） · <code>README.md</code>（概要）</div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

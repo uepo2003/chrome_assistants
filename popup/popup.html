@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=340, initial-scale=1" />
+    <title>Auto Tutorial Skipper</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="app" id="app">
+      <header class="header">
+        <div class="brand">
+          <div class="brand__badge" aria-hidden="true">AT</div>
+          <div class="brand__text">
+            <h1 class="brand__name" data-i18n="popup.brandName">Browser Copilot</h1>
+            <p class="brand__subtitle" data-i18n="popup.brandSubtitle">Goal-driven assistant for your tab</p>
+          </div>
+        </div>
+      </header>
+
+      <section class="status-card" aria-live="polite">
+        <div class="pill" id="statusPill" data-state="idle">
+          <span class="pill__dot" aria-hidden="true"></span>
+          <span class="pill__label" id="statusLabel" data-i18n="popup.status.idle">Idle</span>
+        </div>
+        <div class="status-card__host" id="tabHost" title="">—</div>
+      </section>
+
+      <!-- Default action: open copilot side panel, or quick-skip fallback -->
+      <section class="action" id="actionSection">
+        <button
+          type="button"
+          class="btn btn--primary"
+          id="openCopilotBtn"
+          aria-label="Open the goal-driven copilot side panel"
+          data-i18n-aria-label="popup.openCopilotAria"
+          data-i18n="popup.openCopilot"
+        >
+          Open Copilot →
+        </button>
+        <button
+          type="button"
+          class="btn btn--secondary"
+          id="primaryBtn"
+          aria-label="Quick skip onboarding without a goal"
+          data-i18n-aria-label="popup.quickSkipAria"
+          data-i18n="popup.quickSkip"
+        >
+          Quick skip onboarding
+        </button>
+        <p class="action__hint" id="actionHint" hidden></p>
+      </section>
+
+      <!-- Variant shown when no API key is set -->
+      <section class="warning" id="warningSection" hidden>
+        <h2 class="warning__title" data-i18n="popup.warningTitle">API key required</h2>
+        <p class="warning__body" data-i18n="popup.warningBody">
+          Add your Anthropic API key in settings to use AI-powered
+          auto-progression.
+        </p>
+        <button type="button" class="btn btn--primary" id="openSettingsBtn" data-i18n="popup.warningButton">
+          Open settings
+        </button>
+      </section>
+
+      <section class="quick-settings">
+        <div class="field">
+          <label class="field__label" for="modeSelect" data-i18n="popup.field.mode">Mode</label>
+          <select id="modeSelect" class="field__select">
+            <option value="rules" data-i18n="popup.mode.rules">Rules only</option>
+            <option value="hybrid" selected data-i18n="popup.mode.hybrid">Hybrid</option>
+            <option value="ai" data-i18n="popup.mode.ai">AI only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="speedSelect" data-i18n="popup.field.speed">Speed</label>
+          <select id="speedSelect" class="field__select">
+            <option value="slow" data-i18n="popup.speed.slow">Slow</option>
+            <option value="normal" selected data-i18n="popup.speed.normal">Normal</option>
+            <option value="fast" data-i18n="popup.speed.fast">Fast</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="quick-settings quick-settings--lang">
+        <div class="field field--lang">
+          <label class="field__label" for="langSelect">Language</label>
+          <select id="langSelect" class="field__select">
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+          </select>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <a
+          href="#"
+          class="footer__link"
+          id="footerSettings"
+          role="button"
+        ><span data-i18n="popup.settings">Settings</span> <span aria-hidden="true">⚙</span></a>
+        <span class="footer__version">v0.1.0</span>
+      </footer>
+    </main>
+
+    <script src="../common/error-capture.js"></script>
+    <script src="../common/i18n.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

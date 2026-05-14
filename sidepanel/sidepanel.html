@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title data-i18n="sidepanel.title">Browser Copilot</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <div class="app" data-state="idle">
+      <!-- Sticky top bar -->
+      <header class="topbar">
+        <div class="topbar__brand">
+          <div class="topbar__badge" aria-hidden="true">AT</div>
+          <div class="topbar__text">
+            <h1 class="topbar__title" data-i18n="sidepanel.title">Browser Copilot</h1>
+            <p class="topbar__subtitle" id="hostLabel">—</p>
+          </div>
+        </div>
+        <div class="topbar__actions">
+          <button
+            type="button"
+            id="langPill"
+            class="lang-pill"
+            aria-label="Toggle language"
+            title="EN / 日本語"
+          >EN</button>
+          <span
+            class="status-dot"
+            id="statusDot"
+            data-state="idle"
+            role="status"
+            aria-live="polite"
+            aria-label="Status: idle"
+            title="idle"
+          ></span>
+          <button
+            type="button"
+            id="stopBtn"
+            class="icon-btn icon-btn--danger"
+            aria-label="Stop current run"
+            hidden
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              aria-hidden="true"
+            >
+              <rect x="3" y="3" width="10" height="10" rx="2" />
+            </svg>
+            <span data-i18n="common.stop">Stop</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Scrollable chat / timeline -->
+      <main
+        class="chat"
+        id="chat"
+        aria-live="polite"
+        aria-label="Copilot activity log"
+      >
+        <div class="empty" id="empty">
+          <div class="empty__icon" aria-hidden="true">✦</div>
+          <p class="empty__title" data-i18n="sidepanel.empty.title">Tell me what you want to do.</p>
+          <p class="empty__hint" data-i18n="sidepanel.empty.body">
+            I'll draft a plan, ask for your approval, and run it step by step in
+            this tab.
+          </p>
+        </div>
+      </main>
+
+      <!-- Sticky input area -->
+      <footer class="composer">
+        <label class="composer__label" for="goalInput" data-i18n="sidepanel.composer.label">Your goal</label>
+        <div class="composer__row">
+          <textarea
+            id="goalInput"
+            class="composer__textarea"
+            rows="3"
+            placeholder="Tell me what you want to do on this site… e.g., 'Create a new private GitHub repo called demo'"
+            data-i18n-placeholder="sidepanel.composer.placeholder"
+            aria-label="Describe the goal you want the copilot to achieve"
+          ></textarea>
+          <button
+            type="button"
+            id="sendBtn"
+            class="btn btn--primary composer__send"
+            aria-label="Submit goal"
+            data-i18n="common.send"
+          >
+            Send
+          </button>
+        </div>
+        <p class="composer__hint" data-i18n="sidepanel.composer.hint">
+          Runs in your current tab. You can take over anytime.
+        </p>
+      </footer>
+    </div>
+
+    <script src="../common/error-capture.js"></script>
+    <script src="../common/i18n.js"></script>
+    <script src="../common/messages.js"></script>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

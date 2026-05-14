@@ -1,0 +1,1223 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auto Tutorial Skipper — 仕組みと挙動</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #fafafa;
+    --ink: #0f172a;
+    --ink-2: #475569;
+    --muted: #94a3b8;
+    --line: #e2e8f0;
+    --line-strong: #cbd5e1;
+    --primary: #ef4444;
+    --primary-soft: #fee2e2;
+    --success: #10b981;
+    --success-soft: #d1fae5;
+    --warn: #f59e0b;
+    --warn-soft: #fef3c7;
+    --code-bg: #0f172a;
+    --code-ink: #e2e8f0;
+    --shadow-sm: 0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03);
+    --shadow-md: 0 6px 24px rgba(15,23,42,.06), 0 2px 6px rgba(15,23,42,.04);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+                 "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI",
+                 Meiryo, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- Header / Hero ---------- */
+  header.hero {
+    padding: 72px 0 56px;
+    border-bottom: 1px solid var(--line);
+    background:
+      radial-gradient(1200px 400px at 80% -100px, var(--primary-soft), transparent 70%),
+      linear-gradient(180deg, #fff 0%, var(--bg-soft) 100%);
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12px;
+    color: var(--ink-2);
+    letter-spacing: .04em;
+  }
+  .badge::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 4px var(--primary-soft);
+  }
+  h1.title {
+    margin: 18px 0 8px;
+    font-size: 44px;
+    line-height: 1.15;
+    letter-spacing: -.02em;
+    font-weight: 700;
+  }
+  h1 .accent { color: var(--primary); }
+  p.lede {
+    margin: 0;
+    max-width: 720px;
+    font-size: 17px;
+    color: var(--ink-2);
+  }
+
+  /* Hero demo: fake browser + animated cursor */
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 40px;
+    align-items: center;
+    margin-top: 40px;
+  }
+  @media (max-width: 880px) {
+    .hero-grid { grid-template-columns: 1fr; }
+  }
+  .browser {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+  }
+  .browser-bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--line);
+  }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #e2e8f0; }
+  .dot.r { background: #fca5a5; } .dot.y { background: #fcd34d; } .dot.g { background: #86efac; }
+  .browser-url {
+    margin-left: 10px; padding: 4px 10px; flex: 1;
+    background: #fff; border: 1px solid var(--line); border-radius: 6px;
+    font-size: 12px; color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .browser-body {
+    position: relative;
+    padding: 40px 32px 56px;
+    min-height: 240px;
+    background:
+      linear-gradient(180deg, #fff 0%, #fafafa 100%);
+  }
+  .modal {
+    position: relative;
+    margin: 0 auto;
+    max-width: 320px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+    padding: 18px 18px 16px;
+    box-shadow: 0 8px 22px rgba(15,23,42,.07);
+  }
+  .modal .step {
+    font-size: 11px; letter-spacing: .12em; color: var(--muted);
+    text-transform: uppercase; font-weight: 600;
+  }
+  .modal h4 { margin: 6px 0 4px; font-size: 16px; }
+  .modal p { margin: 0 0 14px; font-size: 13px; color: var(--ink-2); }
+  .modal .btn-row { display: flex; justify-content: flex-end; gap: 8px; }
+  .modal .btn {
+    padding: 7px 14px; border-radius: 7px; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--line); background: #fff; color: var(--ink-2);
+    cursor: default;
+  }
+  .modal .btn.primary {
+    background: var(--primary); color: #fff; border-color: var(--primary);
+  }
+  /* Fake animated cursor */
+  .fake-cursor {
+    position: absolute;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: rgba(239,68,68,.88);
+    border: 2px solid #fff;
+    box-shadow: 0 4px 12px rgba(15,23,42,.18);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: cursor-path 6s ease-in-out infinite;
+  }
+  .fake-ripple {
+    position: absolute;
+    width: 0; height: 0;
+    border-radius: 50%;
+    border: 2px solid rgba(239,68,68,.6);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    animation: cursor-ripple 6s ease-in-out infinite;
+  }
+  .fake-label {
+    position: absolute;
+    transform: translate(8px, 6px);
+    background: rgba(15,23,42,.82);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    pointer-events: none;
+    animation: cursor-label 6s ease-in-out infinite;
+  }
+  @keyframes cursor-path {
+    0%, 4%   { left: 20px;  top: 30px;  }
+    24%      { left: 20px;  top: 30px;  }
+    44%      { left: 76%;   top: 78%;   }
+    48%, 52% { left: 76%;   top: 78%;   }
+    56%      { left: 76%;   top: 78%;   transform: translate(-50%, -50%) scale(.85); }
+    62%      { left: 76%;   top: 78%;   transform: translate(-50%, -50%) scale(1); }
+    100%     { left: 30%;   top: 90%;   opacity: .25; }
+  }
+  @keyframes cursor-ripple {
+    0%, 51% { left: 76%; top: 78%; width: 0; height: 0; opacity: 0; }
+    54%     { width: 12px; height: 12px; opacity: .8; }
+    62%     { width: 46px; height: 46px; opacity: 0; }
+    100%    { width: 0; height: 0; opacity: 0; }
+  }
+  @keyframes cursor-label {
+    0%, 12% { left: 20px; top: 30px; opacity: 0; }
+    18%, 50% { left: 20px; top: 30px; opacity: 0; }
+    20%      { left: 20px; top: 30px; opacity: 1; }
+    44%, 50% { left: 76%; top: 78%; opacity: 1; }
+    58%      { left: 76%; top: 78%; opacity: 0; }
+    100%     { left: 30%; top: 90%; opacity: 0; }
+  }
+
+  .hero-side h2 {
+    margin: 0 0 12px; font-size: 22px; letter-spacing: -.01em;
+  }
+  .hero-side p { margin: 0 0 16px; color: var(--ink-2); }
+  .kv {
+    display: grid; grid-template-columns: auto 1fr; gap: 8px 14px;
+    margin-top: 18px; font-size: 14px;
+  }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; color: var(--ink); }
+
+  /* ---------- Sections ---------- */
+  section { padding: 64px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+  .eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--primary);
+  }
+  h2.section-title {
+    margin: 6px 0 12px;
+    font-size: 28px; letter-spacing: -.015em; font-weight: 700;
+  }
+  p.section-desc { margin: 0 0 32px; color: var(--ink-2); max-width: 720px; }
+
+  /* ---------- Architecture diagram ---------- */
+  .arch {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    align-items: stretch;
+  }
+  @media (max-width: 880px) { .arch { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px) { .arch { grid-template-columns: 1fr; } }
+  .node {
+    position: relative;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 16px 16px;
+    box-shadow: var(--shadow-sm);
+  }
+  .node .role {
+    font-size: 11px; letter-spacing: .12em; color: var(--muted);
+    text-transform: uppercase; font-weight: 700;
+  }
+  .node h3 { margin: 6px 0 6px; font-size: 16px; }
+  .node p { margin: 0; color: var(--ink-2); font-size: 13px; }
+  .node.user   { border-color: var(--line-strong); background: #f8fafc; }
+  .node.popup  { border-top: 3px solid var(--primary); }
+  .node.bg     { border-top: 3px solid #6366f1; }
+  .node.content{ border-top: 3px solid #0ea5e9; }
+  .node.ai     { border-top: 3px solid #14b8a6; }
+  .arrows {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 16px; margin-top: 8px; align-items: center;
+  }
+  @media (max-width: 880px) { .arrows { display: none; } }
+  .arrow-cell {
+    height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 12px;
+  }
+
+  /* ---------- Component cards ---------- */
+  .cards {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+  }
+  @media (max-width: 880px) { .cards { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .card .icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--primary-soft); color: var(--primary);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; margin-bottom: 10px;
+  }
+  .card h3 { margin: 0 0 6px; font-size: 16px; }
+  .card .file {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px; color: var(--muted); margin-bottom: 10px;
+  }
+  .card p { margin: 0; font-size: 14px; color: var(--ink-2); }
+  .card ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
+  .card ul li { margin: 2px 0; }
+
+  /* ---------- Sequence / flow ---------- */
+  .seq {
+    display: grid; grid-template-columns: 56px 1fr;
+    column-gap: 18px; row-gap: 0;
+    position: relative;
+  }
+  .seq::before {
+    content: ""; position: absolute;
+    left: 27px; top: 18px; bottom: 18px;
+    width: 2px; background: var(--line);
+  }
+  .seq .step-num {
+    position: relative;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--primary); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+    box-shadow: 0 0 0 6px #fff, 0 0 0 7px var(--primary-soft);
+    margin-top: 6px;
+  }
+  .seq .step-body { padding: 0 0 22px; }
+  .seq .step-body h4 { margin: 8px 0 4px; font-size: 16px; }
+  .seq .step-body p { margin: 0; color: var(--ink-2); font-size: 14px; }
+  .seq .who {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px;
+    background: #f1f5f9; color: var(--ink-2);
+    margin-right: 8px; vertical-align: 1px;
+  }
+  .who.popup  { background: var(--primary-soft); color: #b91c1c; }
+  .who.bg     { background: #e0e7ff; color: #4338ca; }
+  .who.content{ background: #e0f2fe; color: #0369a1; }
+  .who.ai     { background: #ccfbf1; color: #0f766e; }
+  .who.cursor { background: #fef3c7; color: #92400e; }
+
+  /* ---------- Compare table (rules vs AI) ---------- */
+  .compare {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  }
+  @media (max-width: 720px) { .compare { grid-template-columns: 1fr; } }
+  .compare .col {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 22px;
+    box-shadow: var(--shadow-sm);
+  }
+  .compare .col.rules { border-top: 3px solid var(--success); }
+  .compare .col.ai    { border-top: 3px solid #6366f1; }
+  .compare h3 { margin: 0 0 4px; font-size: 17px; }
+  .compare .sub { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+  .compare ul { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); }
+  .compare li { margin: 4px 0; }
+
+  /* ---------- Code blocks ---------- */
+  pre.code {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12.5px;
+    line-height: 1.6;
+    overflow: auto;
+    margin: 14px 0 0;
+  }
+  pre.code .k { color: #f472b6; }   /* keyword */
+  pre.code .s { color: #86efac; }   /* string */
+  pre.code .c { color: #64748b; font-style: italic; } /* comment */
+  pre.code .n { color: #fca5a5; }   /* name */
+
+  /* ---------- Safety pills ---------- */
+  .safety {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  }
+  @media (max-width: 880px) { .safety { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px) { .safety { grid-template-columns: 1fr; } }
+  .safety .pill {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .pill .num {
+    font-size: 22px; font-weight: 700; color: var(--primary);
+    line-height: 1;
+  }
+  .pill .lbl { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; letter-spacing: .04em; }
+  .pill p { margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
+
+  /* ---------- Privacy / Limits ---------- */
+  .two-col {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+  }
+  @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 22px;
+  }
+  .panel.good { background: var(--success-soft); border-color: #a7f3d0; }
+  .panel.warn { background: var(--warn-soft); border-color: #fde68a; }
+  .panel h3 { margin: 0 0 8px; font-size: 16px; }
+  .panel ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); }
+  .panel li { margin: 3px 0; }
+
+  /* ---------- Footer ---------- */
+  footer {
+    padding: 36px 0 56px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  footer .row {
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  /* ---------- Modes callout (hero) ---------- */
+  .modes-callout {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin-top: 28px;
+  }
+  @media (max-width: 720px) { .modes-callout { grid-template-columns: 1fr; } }
+  .mode-chip {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .mode-chip .label {
+    flex-shrink: 0;
+    background: var(--primary-soft); color: #b91c1c;
+    font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    padding: 4px 8px; border-radius: 999px;
+    text-transform: uppercase;
+  }
+  .mode-chip.alt .label { background: #e0f2fe; color: #0369a1; }
+  .mode-chip h4 { margin: 0 0 2px; font-size: 14px; }
+  .mode-chip p { margin: 0; font-size: 13px; color: var(--ink-2); }
+
+  /* ---------- Chat panel mock (copilot section) ---------- */
+  .chat-mock {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    max-width: 380px;
+    margin: 0 auto;
+  }
+  .chat-mock .chat-top {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: #f8fafc;
+  }
+  .chat-mock .chat-top .dot-r {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 4px var(--success-soft);
+  }
+  .chat-mock .chat-top .title { font-size: 13px; font-weight: 600; }
+  .chat-mock .chat-top .host { font-size: 11px; color: var(--muted); margin-left: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chat-mock .chat-body {
+    padding: 14px; display: flex; flex-direction: column; gap: 10px;
+    background: #fafafa;
+  }
+  .chat-mock .bubble {
+    max-width: 86%;
+    padding: 9px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .chat-mock .bubble.user {
+    align-self: flex-end;
+    background: var(--primary-soft); color: #7f1d1d;
+    border-bottom-right-radius: 3px;
+  }
+  .chat-mock .bubble.agent {
+    background: #fff; border: 1px solid var(--line);
+    color: var(--ink-2);
+    border-bottom-left-radius: 3px;
+  }
+  .chat-mock .bubble.system {
+    align-self: center;
+    background: transparent; color: var(--muted);
+    font-size: 11px; font-style: italic;
+    padding: 0;
+  }
+  .chat-mock .plan-card {
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 12.5px;
+  }
+  .chat-mock .plan-card .head { font-weight: 700; font-size: 12px; color: var(--ink); }
+  .chat-mock .plan-card .step-li {
+    display: flex; align-items: center; gap: 8px; padding: 3px 0;
+    color: var(--ink-2);
+  }
+  .chat-mock .step-li .num {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #f1f5f9; color: var(--ink-2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700;
+  }
+  .chat-mock .step-li.done .num { background: var(--success-soft); color: #065f46; }
+  .chat-mock .step-li.current .num { background: var(--primary); color: #fff; }
+  .chat-mock .step-li.high { border-left: 2px solid var(--primary); padding-left: 6px; margin-left: -8px; }
+  .chat-mock .risk-badge {
+    margin-left: auto;
+    font-size: 10px; font-weight: 700;
+    padding: 1px 6px; border-radius: 999px;
+    background: #f1f5f9; color: var(--ink-2);
+  }
+  .chat-mock .risk-badge.high { background: var(--primary-soft); color: #b91c1c; }
+  .chat-mock .risk-badge.medium { background: var(--warn-soft); color: #92400e; }
+  .chat-mock .ask-card,
+  .chat-mock .confirm-card {
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px;
+    font-size: 12.5px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .chat-mock .confirm-card { border-color: var(--primary); }
+  .chat-mock .confirm-card .head { font-weight: 700; color: #b91c1c; font-size: 12px; }
+  .chat-mock .ask-card .input {
+    background: #f8fafc; border: 1px dashed var(--line-strong);
+    border-radius: 6px; padding: 6px 8px; color: var(--ink-2);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+  }
+  .chat-mock .row-buttons { display: flex; gap: 6px; }
+  .chat-mock .mini-btn {
+    font-size: 11px; font-weight: 600;
+    padding: 5px 10px; border-radius: 6px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink-2);
+  }
+  .chat-mock .mini-btn.primary {
+    background: var(--primary); color: #fff; border-color: var(--primary);
+  }
+
+  /* ---------- Competitive diff table ---------- */
+  .diff-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    font-size: 13.5px;
+  }
+  .diff-table th, .diff-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    text-align: left;
+  }
+  .diff-table thead th {
+    background: #f8fafc;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .diff-table tbody tr:last-child td { border-bottom: none; }
+  .diff-table .axis {
+    font-weight: 600; color: var(--ink);
+    width: 22%;
+    background: #fcfcfd;
+  }
+  .diff-table .ours {
+    background: linear-gradient(180deg, rgba(239,68,68,.05), rgba(239,68,68,.02));
+    color: var(--ink);
+  }
+  .diff-table .badge-us {
+    display: inline-block;
+    font-size: 10px; font-weight: 700; letter-spacing: .08em;
+    padding: 2px 6px; border-radius: 999px;
+    background: var(--primary); color: #fff;
+    text-transform: uppercase;
+    margin-right: 6px;
+  }
+  @media (max-width: 720px) {
+    .diff-table { font-size: 12.5px; }
+    .diff-table th, .diff-table td { padding: 10px; }
+    .diff-table .axis { width: 35%; }
+  }
+
+  /* ---------- Two-mode side-by-side (copilot section) ---------- */
+  .copilot-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start;
+  }
+  @media (max-width: 880px) { .copilot-grid { grid-template-columns: 1fr; } }
+  .copilot-side h3 { margin: 0 0 8px; font-size: 18px; }
+  .copilot-side p { margin: 0 0 14px; color: var(--ink-2); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="badge">Chrome Extension · Manifest V3 · Browser Copilot</span>
+    <h1 class="title">あなたのChromeで、<br><span class="accent">AIがクリック・入力を代行</span>する。</h1>
+    <p class="lede">
+      「GitHubに新リポジトリ作って」みたいなゴールを伝えるだけ。
+      AIが手順を組み立て、<b>あなたの今のChrome</b> — ログイン済みCookieも2FAも拡張機能も全部使った状態で — 順番にクリック・入力していきます。
+      迷う場面では止まって聞いてきます。簡単なオンボーディング突破ならゴールなしのワンクリックでも動きます。
+    </p>
+
+    <div class="modes-callout">
+      <div class="mode-chip">
+        <span class="label">New</span>
+        <div>
+          <h4>Copilot モード</h4>
+          <p>ゴール文 → AI がプラン化 → 承認後、チャットで進捗を実況しながら実行。フォームの値や承認はあなたに聞く。</p>
+        </div>
+      </div>
+      <div class="mode-chip alt">
+        <span class="label">Quick</span>
+        <div>
+          <h4>Quick Skip モード</h4>
+          <p>オンボーディングを黙って突破するだけのワンクリックモード（従来）。ゴール入力不要。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-grid">
+      <div class="browser" aria-hidden="true">
+        <div class="browser-bar">
+          <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+          <span class="browser-url">app.example.com / onboarding</span>
+        </div>
+        <div class="browser-body">
+          <div class="modal">
+            <div class="step">STEP 2 / 4</div>
+            <h4>ようこそ！</h4>
+            <p>まずはこのチュートリアルでアプリの使い方を確認しましょう。</p>
+            <div class="btn-row">
+              <button class="btn" disabled>スキップ</button>
+              <button class="btn primary">次へ</button>
+            </div>
+          </div>
+          <div class="fake-ripple"></div>
+          <div class="fake-cursor"></div>
+          <div class="fake-label">Clicking '次へ'…</div>
+        </div>
+      </div>
+
+      <div class="hero-side">
+        <h2>仕組みを一言で</h2>
+        <p>
+          画面の構造を読み取り → ルール or AI で次のアクションを決定 → 疑似カーソルで滑らかに移動 → 実クリック。
+          これをチュートリアルが終わるまで繰り返します。
+        </p>
+        <dl class="kv">
+          <dt>呼び出すAI</dt><dd>Anthropic Claude（API キーは手元の Chrome storage に保存）</dd>
+          <dt>送信データ</dt><dd>URL・タイトル・可視ボタンのラベルのみ（スクリーンショットや入力値は送りません）</dd>
+          <dt>動作範囲</dt><dd>任意のサイト。トップフレームのみ（iframe や shadow DOM は対象外）</dd>
+          <dt>安全装置</dt><dd>最大30ステップ / 連続6回ノーオペで自動停止</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ========== 全体像 ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">全体像</div>
+    <h2 class="section-title">誰と誰が、どう話しているか</h2>
+    <p class="section-desc">
+      拡張機能は4つの登場人物で成り立っています。あなたが <b>Start</b> を押した瞬間から、メッセージが下のように流れ、ループが回り始めます。
+    </p>
+
+    <div class="arch">
+      <div class="node user">
+        <div class="role">登場人物 1</div>
+        <h3>あなた</h3>
+        <p>ツールバーのアイコンから Start / Stop。モードや速度もここから切り替え。</p>
+      </div>
+      <div class="node popup">
+        <div class="role">登場人物 2</div>
+        <h3>ポップアップUI</h3>
+        <p>状態表示と Start/Stop ボタン。API キー未設定なら警告に切り替わる。</p>
+      </div>
+      <div class="node bg">
+        <div class="role">登場人物 3</div>
+        <h3>バックグラウンドSW</h3>
+        <p>ポップアップとタブの仲介役。Claude API もここから呼び出す。</p>
+      </div>
+      <div class="node content">
+        <div class="role">登場人物 4</div>
+        <h3>コンテンツスクリプト</h3>
+        <p>実際にページを触る本体。DOMを読み、カーソルを動かし、クリックを発火。</p>
+      </div>
+    </div>
+
+    <div class="arrows">
+      <div class="arrow-cell">→ クリック</div>
+      <div class="arrow-cell">→ START</div>
+      <div class="arrow-cell">→ START（タブへ転送）</div>
+      <div class="arrow-cell">→ Claude API</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 構成要素 ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">構成要素</div>
+    <h2 class="section-title">5つの部品が役割分担している</h2>
+    <p class="section-desc">
+      ひとつのファイルに詰め込まず、責務を分離しているのでデバッグも差し替えも簡単です。
+    </p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="icon">①</div>
+        <h3>疑似カーソル</h3>
+        <div class="file">content/cursor.js + content.css</div>
+        <p>22px の赤いドットを画面上に描画。本物のマウスは動かさず、視覚効果として滑らかに移動・クリック演出を行う。</p>
+        <ul>
+          <li>ease-out cubic で目線が追える速度</li>
+          <li>クリック時にリップル＋ラベル表示</li>
+          <li>pointer-events:none で実操作を邪魔しない</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="icon">②</div>
+        <h3>DOMアナライザ</h3>
+        <div class="file">content/dom-analyzer.js</div>
+        <p>現在の画面から「クリックできる要素」を最大40個まで抽出し、ID付きの一覧（スナップショット）にする。</p>
+        <ul>
+          <li>オーバーレイ／チュートリアルクラスを優先</li>
+          <li>「Next」「OK」「Skip」のテキストを上位に</li>
+          <li>非表示・画面外の要素は除外</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="icon">③</div>
+        <h3>ルール判定器</h3>
+        <div class="file">content/rules.js</div>
+        <p>ローカルで瞬時に判断できるパターンを最初に試す。AI呼び出しを減らしてレイテンシとコストを抑える。</p>
+        <ul>
+          <li>「進行ボタンが1つだけ」→ そのままクリック</li>
+          <li>オーバーレイが消えた → done</li>
+          <li>曖昧なときは null を返して AI に委譲</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="icon">④</div>
+        <h3>AIクライアント</h3>
+        <div class="file">background/ai-client.js + prompts.js</div>
+        <p>ルールで決まらない場面だけ Claude に問い合わせ、次のアクションを1つだけ JSON で返してもらう。</p>
+        <ul>
+          <li>送信するのは要素ラベルの要約（軽量）</li>
+          <li>応答は厳格にバリデーション</li>
+          <li>破壊的操作（削除・課金確定）は拒否する設計</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="icon">⑤</div>
+        <h3>アクション実行器</h3>
+        <div class="file">content/action-executor.js</div>
+        <p>カーソルを目標まで動かしてから本物のクリック／タイピング／スクロールを発火する。</p>
+        <ul>
+          <li>mousedown → mouseup → click を順に</li>
+          <li>React 等の入力リスナにも対応する value setter</li>
+          <li>画面外ならスムーズスクロールしてから操作</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="icon">⑥</div>
+        <h3>オーケストレータ</h3>
+        <div class="file">content/main.js</div>
+        <p>上記5つを束ねるループ。設定の読み取り、ルール／AIの呼び分け、停止条件の監視まですべて担当。</p>
+        <ul>
+          <li>ルール ＞ AI のハイブリッド方針</li>
+          <li>停止信号で in-flight を安全に中断</li>
+          <li>30周回上限・連続6回ノーオペで自動停止</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== シーケンス ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">動作の流れ</div>
+    <h2 class="section-title">Startを押してから、終わるまで</h2>
+    <p class="section-desc">
+      1サイクルあたり 0.5〜1.5秒。これを終了条件に当たるまで繰り返します。
+    </p>
+
+    <div class="seq">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h4><span class="who popup">popup</span>あなたが Start を押す</h4>
+        <p>ポップアップは現在のタブIDと一緒に <code>AT_START</code> をバックグラウンドへ送信。状態を「Running」に更新（楽観的UI）。</p>
+      </div>
+
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h4><span class="who bg">background</span>バックグラウンドがタブに転送</h4>
+        <p><code>chrome.tabs.sendMessage(tabId, ...)</code> でそのタブのコンテンツスクリプトへ。バックグラウンドは「このタブは Running」とメモする。</p>
+      </div>
+
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h4><span class="who content">content</span>設定を読み込み、カーソルを表示</h4>
+        <p>chrome.storage から mode と speed を読む → <code>__AT__.cursor.mount()</code> ＋ <code>.show()</code>。ループの周回開始。</p>
+      </div>
+
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h4><span class="who content">content</span>画面をスナップショット</h4>
+        <p>DOMアナライザが可視で操作可能な要素を最大40個抽出し、それぞれに ID を割り振る。オーバーレイの有無も判定。</p>
+      </div>
+
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <h4><span class="who content">rules</span>ルール判定でショートカット</h4>
+        <p>進行ボタンが明らかなら即決定（AI呼び出しなし）。曖昧なら null を返して次へ。Rules-only モードならここで終わり。</p>
+      </div>
+
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <h4><span class="who ai">claude</span>Hybrid / AI モードなら Claude に問い合わせ</h4>
+        <p>スナップショットを軽量テキストに整形してバックグラウンド経由で <code>api.anthropic.com</code> に POST。返答は <code>{"action":"click","targetId":"e3", ...}</code> の単一JSON。</p>
+      </div>
+
+      <div class="step-num">7</div>
+      <div class="step-body">
+        <h4><span class="who content">content</span>アクションを正規化して実行</h4>
+        <p>ルールの <code>{kind,id}</code> と AIの <code>{action,targetId}</code> を内部形 <code>{verb,targetId,...}</code> に変換。</p>
+      </div>
+
+      <div class="step-num">8</div>
+      <div class="step-body">
+        <h4><span class="who cursor">cursor</span>カーソルを動かして本物のクリック</h4>
+        <p>対象要素の中心へ ease-out で移動 → リップル演出 → <code>mousedown / mouseup / click</code> を順次発火。タイピングなら value setter で React/Vue にも届くイベントを送る。</p>
+      </div>
+
+      <div class="step-num">9</div>
+      <div class="step-body">
+        <h4><span class="who content">content</span>少し待って次の周回へ</h4>
+        <p><code>betweenMs + settleMs</code>（speed設定に応じて 350ms〜1.7s）待機してから 4 に戻る。</p>
+      </div>
+
+      <div class="step-num">10</div>
+      <div class="step-body">
+        <h4><span class="who content">content</span>終了条件で停止</h4>
+        <p>action が <code>done</code> / 30周上限 / 連続6回ノーオペ / ユーザーが Stop、のいずれかでループ終了。カーソルを片付け、ポップアップに <code>STATE_CHANGED</code> を通知。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== ルール vs AI ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">判断のしくみ</div>
+    <h2 class="section-title">ルールとAIを使い分けるハイブリッド方式</h2>
+    <p class="section-desc">
+      「次へボタンが明らかにそれと分かる」ような単純な場面は、毎回 AI に聞くと遅くてお金がかかります。
+      最初にローカルのルールで試し、決め手がないときだけ Claude を呼ぶ──これが Hybrid（既定）の挙動です。
+    </p>
+
+    <div class="compare">
+      <div class="col rules">
+        <h3>ルール判定（高速・無料）</h3>
+        <div class="sub">content/rules.js</div>
+        <ul>
+          <li>オーバーレイ内に「Next / OK / Continue / Got it」のような <b>進行系ボタンが1つだけ</b>あれば即クリック</li>
+          <li>進行系がなく、Skip 等の <b>離脱系ボタン</b> しかない場合はポリシーで判断（既定は離脱しない）</li>
+          <li>オーバーレイ／チュートリアルクラスが完全に消えたら <code>done</code> を返してループ終了</li>
+          <li>曖昧なケースは <b>null</b> を返して AI に委ねる（保守的）</li>
+        </ul>
+      </div>
+      <div class="col ai">
+        <h3>AI判定（柔軟・有料）</h3>
+        <div class="sub">background/ai-client.js + prompts.js → Claude</div>
+        <ul>
+          <li>送るのは <b>URL / タイトル / 可視ボタンのラベル一覧</b>のみ（〜3KB に切り詰め）</li>
+          <li>応答は単一アクション JSON のみを許可：<code>click / type / scroll / done / skip</code></li>
+          <li>targetId は <b>スナップショットに実在する ID か</b> を必ず検証</li>
+          <li>「アカウント削除」など破壊的操作は <code>done</code> で打ち切るようプロンプトで指示</li>
+        </ul>
+      </div>
+    </div>
+
+<pre class="code"><span class="c">// Claude が返す JSON はこの形だけ受理する</span>
+{
+  <span class="n">"action"</span>: <span class="s">"click"</span>,            <span class="c">// click | type | scroll | done | skip</span>
+  <span class="n">"targetId"</span>: <span class="s">"e3"</span>,             <span class="c">// snapshot.interactives[].id を参照</span>
+  <span class="n">"text"</span>: <span class="k">null</span>,                <span class="c">// type のときだけ文字列</span>
+  <span class="n">"deltaY"</span>: <span class="k">null</span>,              <span class="c">// scroll のときだけ数値</span>
+  <span class="n">"reason"</span>: <span class="s">"single primary CTA in onboarding modal"</span>
+}</pre>
+  </div>
+</section>
+
+<!-- ========== 安全装置 ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">セーフティ</div>
+    <h2 class="section-title">暴走を防ぐ4つの装置</h2>
+    <p class="section-desc">
+      自動で画面を操作する以上、止まらないと困ります。複数の停止条件を重ねて事故を防いでいます。
+    </p>
+
+    <div class="safety">
+      <div class="pill">
+        <div><span class="num">30</span><span class="lbl">最大ループ回数</span></div>
+        <p>1セッションで最大30アクションまで。それ以上は強制終了して人手に戻す。</p>
+      </div>
+      <div class="pill">
+        <div><span class="num">6</span><span class="lbl">連続ノーオペ上限</span></div>
+        <p>クリック対象が見つからない／実行できない状態が6連続したら自動停止。</p>
+      </div>
+      <div class="pill">
+        <div><span class="num">⏹</span><span class="lbl">ユーザー停止</span></div>
+        <p>Stop ボタンで即座に in-flight を打ち切り。カーソルも片付ける。</p>
+      </div>
+      <div class="pill">
+        <div><span class="num">✋</span><span class="lbl">破壊的操作の拒否</span></div>
+        <p>「削除」「支払う」「公開する」のような不可逆操作はプロンプトで拒否、<code>done</code> 終了。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== プライバシー / 制限 ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">前提と制限</div>
+    <h2 class="section-title">送るものと、できないこと</h2>
+
+    <div class="two-col">
+      <div class="panel good">
+        <h3>送信しているもの</h3>
+        <ul>
+          <li>ページの URL とタイトル</li>
+          <li>可視ボタン／入力欄の <b>ラベル</b>（最大40件、合計約3KBに切り詰め）</li>
+          <li>あなたの Anthropic API キー（リクエストヘッダのみ）</li>
+        </ul>
+        <h3 style="margin-top:14px">送信していないもの</h3>
+        <ul>
+          <li>スクリーンショット・画像</li>
+          <li>入力欄に入っている値</li>
+          <li>ページ本文・記事の中身</li>
+          <li>Cookie・セッショントークン</li>
+        </ul>
+      </div>
+      <div class="panel warn">
+        <h3>現状の制限</h3>
+        <ul>
+          <li>トップフレームのみ（<code>all_frames:false</code>）。iframe内の UI は触れない</li>
+          <li>Shadow DOM は貫通しない（Web Components 製モーダルは対象外）</li>
+          <li>サイトごとに UI 構造が違うため、AI判定の精度はサイト依存</li>
+          <li>Claude を使う以上、利用には Anthropic API のトークン課金が発生</li>
+          <li>chrome:// / chrome-extension:// / about: などの内部ページでは動作不可</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== Copilot モード ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Copilot モード</div>
+    <h2 class="section-title">ゴールを伝える → AIが手順化 → 承認後に実行</h2>
+    <p class="section-desc">
+      自動化を「全部おまかせ」にすると怖いし、「全部手動」だと面倒。Copilotモードはその中間です。
+      ゴール文 → AIがプラン化 → <b>あなたが承認</b> → 実行 → 迷ったら<b>あなたに質問</b> → 不可逆操作の前に<b>あなたに承認を求める</b>。
+    </p>
+
+    <div class="copilot-grid">
+      <div class="copilot-side">
+        <h3>Side Panel に常駐するチャット</h3>
+        <p>
+          拡張アイコンから <b>Open Copilot →</b> を押すと、Chromeの右側にチャットパネルが開きます。
+          ここで自然文のゴールを入力。
+          Claudeがプランを3〜7ステップに分解、リスク（low / medium / high）を付けて表示。
+          <b>Approve</b> を押すと実行開始。
+        </p>
+        <p>
+          実行中はステップごとに進捗ナレーション。値が必要なら "What name?" と聞いてくるし、
+          公開・送信・削除のような不可逆操作は <b>必ず</b> 承認カードでブロック。
+        </p>
+      </div>
+
+      <div class="chat-mock" aria-hidden="true">
+        <div class="chat-top">
+          <span class="dot-r"></span>
+          <span class="title">Browser Copilot</span>
+          <span class="host">github.com</span>
+        </div>
+        <div class="chat-body">
+          <div class="bubble user">GitHub に <b>demo-app</b> という名前のプライベートリポジトリを作って</div>
+          <div class="bubble system">Plan (4 steps)</div>
+          <div class="plan-card">
+            <div class="head">Plan</div>
+            <div class="step-li done"><span class="num">✓</span>新規リポジトリ画面を開く<span class="risk-badge">low</span></div>
+            <div class="step-li current"><span class="num">2</span>名前と説明を入力<span class="risk-badge">low</span></div>
+            <div class="step-li"><span class="num">3</span>可視性を Private に設定<span class="risk-badge">low</span></div>
+            <div class="step-li high"><span class="num">4</span>Create repository を押す<span class="risk-badge high">high</span></div>
+          </div>
+          <div class="bubble agent">名前欄に <b>demo-app</b> を入力します。</div>
+          <div class="ask-card">
+            <div><b>説明文をどうしますか？</b></div>
+            <div class="input">Suggested: "Throwaway demo project"</div>
+            <div class="row-buttons">
+              <button class="mini-btn primary">Send</button>
+              <button class="mini-btn">空欄で進める</button>
+            </div>
+          </div>
+          <div class="bubble system">Step 4 — confirmation required</div>
+          <div class="confirm-card">
+            <div class="head">⚠ Create repository を押そうとしています</div>
+            <div>この操作は不可逆です。GitHub にリポジトリ <b>demo-app</b> が作成されます。</div>
+            <div class="row-buttons">
+              <button class="mini-btn primary">Approve</button>
+              <button class="mini-btn">Skip step</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin: 36px 0 8px; font-size: 18px;">フロー（10ステップ）</h3>
+    <div class="seq" style="margin-top: 12px;">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h4><span class="who popup">popup</span>"Open Copilot →" をクリック</h4>
+        <p>ポップアップから <code>chrome.sidePanel.open({tabId})</code>（フォールバックで <code>AT_OPEN_PANEL</code>）。サイドパネルが開く。</p>
+      </div>
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h4><span class="who content">sidepanel</span>ゴール文を入力 → <code>AT_GOAL_SUBMIT</code></h4>
+        <p>サイドパネル → バックグラウンドへ。サイドパネル状態：<code>planning</code>。</p>
+      </div>
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h4><span class="who ai">claude</span>プラン生成（planner.js）</h4>
+        <p>Claude が JSON 配列で 1〜8ステップ返す。各ステップに <code>{id, title, description, risk, expectedOutcome}</code>。</p>
+      </div>
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h4><span class="who bg">background</span><code>AT_PLAN_READY</code> をサイドパネルへ</h4>
+        <p>サイドパネルにプランカードが表示され、承認待ち。<b>高リスク</b>ステップは赤の左ボーダーで強調。</p>
+      </div>
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <h4><span class="who content">sidepanel</span>Approve → <code>AT_PLAN_APPROVED</code></h4>
+        <p>承認後、バックグラウンドはコンテンツに <code>AT_STEP_START</code> を 1ステップずつ送出。</p>
+      </div>
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <h4><span class="who content">content</span>ステップ内ループ（最大12回）</h4>
+        <p>スナップショット → ルール／AIで次のアクション決定 → 実行。1ステップ完了で <code>AT_STEP_DONE</code>。</p>
+      </div>
+      <div class="step-num">7</div>
+      <div class="step-body">
+        <h4><span class="who ai">claude</span>不明な値があれば <code>ask_user</code></h4>
+        <p>"プロジェクト名は？" のような質問が必要なときは AI が <code>ask_user</code> アクションを返す。サイドパネルにテキスト入力カードが出てユーザー回答を待つ。</p>
+      </div>
+      <div class="step-num">8</div>
+      <div class="step-body">
+        <h4><span class="who content">guards</span>リスク評価 → 必要なら <code>confirm</code></h4>
+        <p>ローカルガード（送信・削除・支払い・公開のキーワード検出）と AI 自身の判断を組み合わせ、不可逆な操作は <b>必ず</b> 承認カードを出す。</p>
+      </div>
+      <div class="step-num">9</div>
+      <div class="step-body">
+        <h4><span class="who cursor">cursor</span>承認後、疑似カーソルで実行</h4>
+        <p>Side Panel に「Clicking 'Create repository'…」と実況。本物のクリックを発火。</p>
+      </div>
+      <div class="step-num">10</div>
+      <div class="step-body">
+        <h4><span class="who content">content</span>全ステップ完了 → <code>AT_RUN_COMPLETE</code></h4>
+        <p>カーソル片付け、Side Panel にサマリ表示。<code>AT_USER_STOP</code> はいつでも割り込み可。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 競合との差別化 ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">競合との違い</div>
+    <h2 class="section-title">Perplexity Comet / ChatGPT Operator / Manus との差別化</h2>
+    <p class="section-desc">
+      AIにブラウザを操作させるプロダクトは他にもありますが、ほとんどが「<b>別ブラウザ</b>」か「<b>クラウドVM上の別セッション</b>」で動きます。
+      この拡張機能は <b>あなたが今ログインしているChromeそのもの</b> で動くこと、そして <b>明示的な承認ゲート</b> を入れていることが大きな違いです。
+    </p>
+
+    <div style="overflow-x: auto;">
+      <table class="diff-table">
+        <thead>
+          <tr>
+            <th class="axis">比較軸</th>
+            <th>Perplexity Comet</th>
+            <th>ChatGPT Operator / Atlas</th>
+            <th>Manus</th>
+            <th class="ours"><span class="badge-us">us</span>Browser Copilot</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="axis">実行環境</td>
+            <td>専用ブラウザアプリ</td>
+            <td>OpenAIのクラウドVMブラウザ</td>
+            <td>クラウドVM上のエージェント</td>
+            <td class="ours"><b>あなたの今のChrome</b></td>
+          </tr>
+          <tr>
+            <td class="axis">ログイン状態</td>
+            <td>Comet内で再ログインが必要なサイト多数</td>
+            <td>サンドボックスなので毎回再ログイン</td>
+            <td>VM内に独自セッション</td>
+            <td class="ours"><b>既存のCookie・2FA・他の拡張機能すべて使える</b></td>
+          </tr>
+          <tr>
+            <td class="axis">関与モデル</td>
+            <td>自律寄り（タブをまるごと譲る）</td>
+            <td>自律寄り（タブをまるごと譲る）</td>
+            <td>完全自律エージェント</td>
+            <td class="ours"><b>コパイロット型</b>（あなたが画面を見続け、いつでも介入可）</td>
+          </tr>
+          <tr>
+            <td class="axis">不可逆操作</td>
+            <td>明示的な承認ゲートなし（基本任せる）</td>
+            <td>一部の操作で確認が入る</td>
+            <td>規定された範囲は自動</td>
+            <td class="ours"><b>送信・削除・公開・支払いは必ず承認カード</b></td>
+          </tr>
+          <tr>
+            <td class="axis">不明な値の扱い</td>
+            <td>推測して埋めることが多い</td>
+            <td>推測して埋めることが多い</td>
+            <td>推測 + 後追い確認</td>
+            <td class="ours"><b><code>ask_user</code> で能動的に聞く</b>（プロジェクト名・説明文など）</td>
+          </tr>
+          <tr>
+            <td class="axis">配布</td>
+            <td>専用ブラウザのインストールが必要</td>
+            <td>Web/有償プラン</td>
+            <td>Webサービス</td>
+            <td class="ours"><b>Chrome拡張機能1個</b>（unpacked load 30秒）</td>
+          </tr>
+          <tr>
+            <td class="axis">データ経路</td>
+            <td>Perplexity の中間サーバー</td>
+            <td>OpenAIの中間サーバー</td>
+            <td>Manusの中間サーバー</td>
+            <td class="ours"><b>ブラウザ → Anthropic に直結</b>（中間サーバーなし）</td>
+          </tr>
+          <tr>
+            <td class="axis">APIキー</td>
+            <td>サブスク料金に内包</td>
+            <td>サブスク料金に内包</td>
+            <td>サブスク料金に内包</td>
+            <td class="ours"><b>あなたのAnthropic APIキー</b>（chrome.storage.localにのみ保存）</td>
+          </tr>
+          <tr>
+            <td class="axis">ユーザーの介入</td>
+            <td>難しい（タブを奪われている）</td>
+            <td>難しい（別画面）</td>
+            <td>VM内なので不可</td>
+            <td class="ours"><b>マウスをいつでも奪い返せる</b>（拡張機能側のカーソルは視覚効果のみ）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="section-desc" style="margin-top: 24px;">
+      ひとことで言うと──<b>「クラウドVMにタブを譲る自律エージェント」ではなく、「自分のChromeに張り付いて手伝うコパイロット」</b>。
+      認証・拡張機能・履歴に依存するワークフロー（GitHub / Notion / 社内SaaS / 銀行など）ほど、この差が効きます。
+    </p>
+  </div>
+</section>
+
+<!-- ========== 速度プロファイル ========== -->
+<section>
+  <div class="wrap">
+    <div class="eyebrow">体感の調整</div>
+    <h2 class="section-title">3段階の速度プロファイル</h2>
+    <p class="section-desc">
+      カーソル移動と次アクションまでの待ち時間を変えて、「人が操作しているように見せる」か「とにかく早く済ませる」かを選べます。
+    </p>
+
+    <div class="cards">
+      <div class="card">
+        <div class="icon">🐢</div>
+        <h3>Slow</h3>
+        <p>カーソル 900ms / 間 1200ms / 馴染み 500ms</p>
+        <ul><li>動作を目で追える</li><li>デモや録画向け</li></ul>
+      </div>
+      <div class="card">
+        <div class="icon">⚖️</div>
+        <h3>Normal（既定）</h3>
+        <p>カーソル 550ms / 間 600ms / 馴染み 300ms</p>
+        <ul><li>バランス型</li><li>普段使いはこれ</li></ul>
+      </div>
+      <div class="card">
+        <div class="icon">⚡</div>
+        <h3>Fast</h3>
+        <p>カーソル 250ms / 間 200ms / 馴染み 150ms</p>
+        <ul><li>最短で突破</li><li>カーソル演出は控えめ</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <div>Browser Copilot · v0.2.0 · Chrome Manifest V3 (旧名: Auto Tutorial Skipper)</div>
+      <div>説明書 — <code>auto-tutorial-extension/docs/overview.html</code></div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
