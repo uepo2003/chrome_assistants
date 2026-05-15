@@ -1,0 +1,509 @@
+/* Quickstart Copilot — sidepanel: Recipe catalog + Live Run + upgrade banner.
+ *
+ * Depends on common/tokens.css + common/components.css. Loaded AFTER sidepanel.css
+ * so it can override the legacy `body` rules where the new tokens win.
+ *
+ * Layout matrix (.app):
+ *   data-mode="catalog" + data-state="idle"     → show .catalog, hide .live + .chat + .composer
+ *   data-mode="catalog" + data-state="planning|awaiting-approval|running|waiting-user|paused|done|aborted"
+ *                                               → show .live + .chat, hide .catalog + .composer
+ *   data-mode="open-ended"                      → hide .catalog + .live, show .chat + .composer
+ *
+ * NOTE: No hardcoded colors. Everything comes from tokens.css.
+ */
+
+/* ---------- App layout switches ---------------------------------------- */
+
+/* Catalog mode, idle → show only the catalog, hide chat / composer / live. */
+.app[data-mode="catalog"][data-state="idle"] #chat,
+.app[data-mode="catalog"][data-state="idle"] #composer,
+.app[data-mode="catalog"][data-state="idle"] #liveRun {
+  display: none !important;
+}
+
+/* Catalog mode, run in flight → show live run + chat, hide composer + catalog. */
+.app[data-mode="catalog"]:not([data-state="idle"]) #catalog,
+.app[data-mode="catalog"]:not([data-state="idle"]) #composer {
+  display: none !important;
+}
+
+/* Open-ended mode → hide catalog + live, show classic chat + composer. */
+.app[data-mode="open-ended"] #catalog,
+.app[data-mode="open-ended"] #liveRun,
+.app[data-mode="open-ended"] #upgradeBanner {
+  display: none !important;
+}
+
+/* Upgrade banner only shows on the catalog home (idle). */
+.app:not([data-state="idle"]) #upgradeBanner {
+  display: none !important;
+}
+
+/* Open-ended header chip + back link only when in open-ended mode. */
+.app[data-mode="open-ended"] #openEndedTag,
+.app[data-mode="open-ended"] #backToCatalogBtn {
+  display: inline-flex;
+}
+.app[data-mode="catalog"] #openEndedTag,
+.app[data-mode="catalog"] #backToCatalogBtn {
+  display: none !important;
+}
+
+/* Show #empty placeholder only in open-ended idle state. */
+.app[data-mode="open-ended"][data-state="idle"] #empty {
+  display: block;
+}
+
+/* Paused panel toggle — only in paused state. */
+.app:not([data-state="paused"]) #pausedPanel {
+  display: none !important;
+}
+
+/* ---------- Upgrade banner --------------------------------------------- */
+
+.upgrade-banner {
+  display: flex;
+  gap: var(--at-sp-3);
+  align-items: flex-start;
+  margin: var(--at-sp-3) var(--at-sp-3) 0;
+  padding: var(--at-sp-3);
+  background: var(--at-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--at-accent) 35%, transparent);
+  border-radius: var(--at-radius-md);
+  color: var(--at-fg);
+}
+.upgrade-banner[hidden] { display: none; }
+.upgrade-banner__body {
+  flex: 1;
+  min-width: 0;
+}
+.upgrade-banner__title {
+  display: block;
+  font-size: var(--at-fs-md);
+  font-weight: 700;
+  color: var(--at-fg);
+}
+.upgrade-banner__text {
+  margin: var(--at-sp-1) 0 0;
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+  line-height: var(--at-lh-base);
+}
+
+/* ---------- Catalog header --------------------------------------------- */
+
+.catalog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-4);
+  padding: var(--at-sp-4) var(--at-sp-3) var(--at-sp-5);
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.catalog__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-3);
+}
+
+.catalog__heading {
+  margin: 0;
+  font-size: var(--at-fs-lg);
+  font-weight: 700;
+  color: var(--at-fg);
+  line-height: var(--at-lh-tight);
+}
+
+.catalog__search {
+  display: block;
+}
+
+.catalog__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--at-sp-2);
+}
+
+.catalog__chip {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  font-size: var(--at-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: var(--at-sp-1) var(--at-sp-3);
+  border-radius: var(--at-radius-pill);
+  background: var(--at-bg-elev);
+  color: var(--at-fg-muted);
+  border: 1px solid var(--at-border);
+  cursor: pointer;
+  transition: background var(--at-dur-fast) var(--at-ease),
+              color var(--at-dur-fast) var(--at-ease),
+              border-color var(--at-dur-fast) var(--at-ease);
+}
+.catalog__chip:hover {
+  background: var(--at-bg-sunken);
+  color: var(--at-fg);
+}
+.catalog__chip[aria-pressed="true"],
+.catalog__chip.is-active {
+  background: var(--at-accent);
+  color: var(--at-accent-fg);
+  border-color: var(--at-accent);
+}
+.catalog__chip:focus-visible {
+  /* Outline from common/components.css universal rule (Section 11.1). */
+  box-shadow: var(--at-focus-ring);
+}
+
+.catalog__count {
+  margin: 0;
+  font-size: var(--at-fs-xs);
+  color: var(--at-fg-muted);
+}
+
+/* ---------- Catalog groups --------------------------------------------- */
+
+.catalog__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-5);
+}
+
+.catalog__group-heading {
+  margin: 0 0 var(--at-sp-3);
+  font-size: var(--at-fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--at-fg-muted);
+}
+
+.catalog__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--at-sp-3);
+}
+
+.catalog__empty {
+  margin: var(--at-sp-5) 0 0;
+  text-align: center;
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+}
+
+.catalog__footer {
+  margin-top: var(--at-sp-5);
+  display: flex;
+  justify-content: center;
+  padding-top: var(--at-sp-3);
+  border-top: 1px solid var(--at-border);
+}
+
+/* ---------- Recipe card ------------------------------------------------ */
+
+.recipe-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-2);
+  padding: var(--at-sp-3);
+  min-height: 140px;
+  position: relative;
+  text-align: left;
+}
+
+.recipe-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--at-sp-2);
+}
+
+.recipe-card__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--at-radius-sm);
+  background: var(--at-accent-soft);
+  color: var(--at-accent);
+  font-size: var(--at-fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recipe-card__difficulty {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px var(--at-sp-2);
+  border-radius: var(--at-radius-pill);
+  background: var(--at-bg-sunken);
+  color: var(--at-fg-muted);
+}
+.recipe-card__difficulty[data-difficulty="beginner"] {
+  background: var(--at-success-soft);
+  color: var(--at-success);
+}
+.recipe-card__difficulty[data-difficulty="intermediate"] {
+  background: var(--at-warning-soft);
+  color: var(--at-warning);
+}
+.recipe-card__difficulty[data-difficulty="advanced"] {
+  background: var(--at-danger-soft);
+  color: var(--at-danger);
+}
+
+.recipe-card__title {
+  margin: 0;
+  font-size: var(--at-fs-md);
+  font-weight: 700;
+  color: var(--at-fg);
+  line-height: var(--at-lh-tight);
+}
+
+.recipe-card__desc {
+  margin: 0;
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+  line-height: var(--at-lh-base);
+  /* Clamp to 3 lines */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+}
+
+.recipe-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--at-sp-2);
+  margin-top: var(--at-sp-1);
+}
+
+.recipe-card__estimate {
+  font-size: var(--at-fs-xs);
+  color: var(--at-fg-muted);
+}
+
+.recipe-card[data-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: auto; /* keep tooltip */
+  filter: saturate(0.7);
+}
+.recipe-card[data-disabled="true"] .recipe-card__run {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* ---------- Recipe detail modal ---------------------------------------- */
+
+.recipe-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-2);
+}
+.recipe-detail__heading {
+  margin: 0;
+  font-size: var(--at-fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--at-fg-muted);
+}
+.recipe-detail__desc {
+  margin: 0;
+  font-size: var(--at-fs-base);
+  color: var(--at-fg);
+  line-height: var(--at-lh-base);
+}
+.recipe-detail__verified {
+  margin: 0;
+  font-size: var(--at-fs-xs);
+  color: var(--at-fg-muted);
+  font-style: italic;
+}
+.recipe-detail__list {
+  margin: 0;
+  padding-left: var(--at-sp-5);
+  font-size: var(--at-fs-base);
+  color: var(--at-fg);
+  line-height: var(--at-lh-base);
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-1);
+}
+
+/* ---------- Recipe preview modal --------------------------------------- */
+
+.recipe-preview__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-2);
+}
+.recipe-preview__heading {
+  margin: 0;
+  font-size: var(--at-fs-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--at-fg-muted);
+}
+.recipe-preview__heading--touch { color: var(--at-accent); }
+.recipe-preview__heading--not   { color: var(--at-fg-muted); }
+.recipe-preview__list {
+  margin: 0;
+  padding-left: var(--at-sp-5);
+  font-size: var(--at-fs-base);
+  color: var(--at-fg);
+  line-height: var(--at-lh-base);
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-1);
+}
+.recipe-preview__tokens {
+  margin: 0;
+  font-size: var(--at-fs-xs);
+  color: var(--at-fg-muted);
+  font-family: var(--at-font-mono);
+}
+
+/* ---------- Live Run --------------------------------------------------- */
+
+.live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-3);
+  padding: var(--at-sp-4) var(--at-sp-3) var(--at-sp-3);
+  border-bottom: 1px solid var(--at-border-soft);
+}
+.live[hidden] { display: none; }
+
+.live__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-2);
+}
+
+.live__pill { align-self: flex-start; }
+
+.live__heading {
+  margin: 0;
+  font-size: var(--at-fs-md);
+  font-weight: 700;
+  color: var(--at-fg);
+  line-height: var(--at-lh-tight);
+}
+.live__counter {
+  margin: 0;
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+  font-family: var(--at-font-mono);
+}
+.live__summary {
+  margin: 0;
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+  line-height: var(--at-lh-base);
+  /* Clamp to 2 lines so the live header never grows tall. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.live__actions {
+  display: flex;
+  justify-content: stretch;
+}
+
+/* Paused-for-human card */
+.live__paused {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--at-sp-3);
+  padding: var(--at-sp-3);
+  background: var(--at-warning-soft);
+  border-color: color-mix(in srgb, var(--at-warning) 35%, transparent);
+}
+.live__paused-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--at-radius-md);
+  background: color-mix(in srgb, var(--at-warning) 18%, transparent);
+  color: var(--at-warning);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.live__paused-body {
+  flex: 1;
+  min-width: 0;
+}
+.live__paused-title {
+  margin: 0;
+  font-size: var(--at-fs-md);
+  font-weight: 700;
+  color: var(--at-fg);
+}
+.live__paused-why {
+  margin: var(--at-sp-1) 0 0;
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+  line-height: var(--at-lh-base);
+}
+
+/* ---------- Topbar tweaks (open-ended chip + back link) ---------------- */
+
+.topbar__back[hidden],
+.topbar__tag[hidden] { display: none !important; }
+.topbar__back {
+  padding: var(--at-sp-1) var(--at-sp-2);
+}
+.topbar__tag {
+  font-size: 10px;
+  padding: 2px var(--at-sp-2);
+}
+
+/* ---------- Off-tab banner (token re-skin) ----------------------------- */
+/* Re-style existing .off-tab-banner from sidepanel.css so it uses tokens.   */
+
+.off-tab-banner {
+  background: var(--at-warning-soft);
+  border-color: color-mix(in srgb, var(--at-warning) 35%, transparent);
+  color: var(--at-fg);
+  border-radius: var(--at-radius-md);
+}
+.off-tab-banner__btn {
+  background: var(--at-accent);
+}
+.off-tab-banner__btn:hover {
+  background: var(--at-accent-hov);
+}
+
+/* ---------- Animations: reduced motion --------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .qc-pill[data-state="running"] .qc-pill__dot {
+    animation: none;
+  }
+  .status-dot {
+    animation: none !important;
+  }
+  .recipe-card,
+  .qc-card--interactive,
+  .qc-btn {
+    transition: none !important;
+  }
+  .thinking__dots span {
+    animation: none !important;
+  }
+}

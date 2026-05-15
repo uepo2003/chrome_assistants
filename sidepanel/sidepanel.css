@@ -453,7 +453,8 @@ body {
   background: #fff;
 }
 .ask__input:focus-visible {
-  outline: none;
+  /* Universal outline (common/components.css §11.1) remains; this rule
+   * adds a colored border + halo on top. */
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
 }
@@ -572,7 +573,8 @@ body {
   max-height: 140px;
 }
 .composer__textarea:focus-visible {
-  outline: none;
+  /* Universal outline (common/components.css §11.1) remains; this rule
+   * adds a colored border + halo on top. */
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
 }
@@ -745,3 +747,213 @@ body {
 [hidden] {
   display: none !important;
 }
+
+/* === First-Run wizard (sec8-firstrun) ====================================
+ * Activated via .app[data-mode="firstrun"]. Hides catalog / live / composer
+ * and shows the wizard inside <main class="chat">. All visible strings come
+ * from firstRun.*, common.*, or existing keys.
+ * ========================================================================= */
+.app[data-mode="firstrun"] #catalog,
+.app[data-mode="firstrun"] #liveRun,
+.app[data-mode="firstrun"] #composer,
+.app[data-mode="firstrun"] #upgradeBanner,
+.app[data-mode="firstrun"] #empty {
+  display: none !important;
+}
+.app[data-mode="firstrun"] #firstRun {
+  display: flex;
+}
+
+.firstrun {
+  display: none;
+  flex-direction: column;
+  gap: var(--at-sp-4);
+  padding: var(--at-sp-4);
+  min-height: 100%;
+}
+
+.firstrun__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-2);
+  align-items: center;
+}
+.firstrun__dots {
+  display: flex;
+  gap: var(--at-sp-2);
+  align-items: center;
+}
+.firstrun__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--at-bg-sunken);
+  border: 1px solid var(--at-border);
+  transition: background-color var(--at-dur-fast) var(--at-ease),
+              border-color var(--at-dur-fast) var(--at-ease),
+              transform var(--at-dur-fast) var(--at-ease);
+}
+.firstrun__dot[data-current="true"] {
+  background: var(--at-accent);
+  border-color: var(--at-accent);
+  transform: scale(1.25);
+}
+.firstrun__dot[data-done="true"] {
+  background: var(--at-accent-soft);
+  border-color: var(--at-accent);
+}
+.firstrun__counter {
+  margin: 0;
+  font-size: var(--at-fs-xs);
+  color: var(--at-fg-muted);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.firstrun__step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-3);
+  flex: 1;
+}
+.firstrun__step[hidden] { display: none; }
+.firstrun__title {
+  margin: 0;
+  font-size: var(--at-fs-xl);
+  font-weight: 700;
+  color: var(--at-fg);
+  line-height: var(--at-lh-tight);
+}
+.firstrun__body {
+  margin: 0;
+  font-size: var(--at-fs-base);
+  color: var(--at-fg-muted);
+  line-height: var(--at-lh-base);
+}
+
+/* Language step — two large radio cards */
+.firstrun__choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--at-sp-3);
+  margin-top: var(--at-sp-2);
+}
+.firstrun__choice {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--at-sp-2);
+  padding: var(--at-sp-5) var(--at-sp-3);
+  background: var(--at-bg);
+  font-family: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.firstrun__choice[aria-checked="true"] {
+  border-color: var(--at-accent);
+  background: var(--at-accent-soft);
+  box-shadow: var(--at-shadow-2);
+}
+.firstrun__choice-icon {
+  font-size: var(--at-fs-xl);
+  font-weight: 700;
+  color: var(--at-accent);
+  letter-spacing: 0.04em;
+}
+.firstrun__choice-label {
+  font-size: var(--at-fs-md);
+  font-weight: 600;
+  color: var(--at-fg);
+}
+
+/* API-key step */
+.firstrun__key-row {
+  display: flex;
+  gap: var(--at-sp-2);
+  align-items: stretch;
+}
+.firstrun__key-input {
+  flex: 1;
+  font-family: var(--at-font-mono);
+  font-size: var(--at-fs-sm);
+}
+.firstrun__test-result {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+}
+.firstrun__test-result[data-state="ok"]   { color: var(--at-success); }
+.firstrun__test-result[data-state="fail"] { color: var(--at-danger); }
+.firstrun__test-result[data-state="pending"] { color: var(--at-fg-muted); }
+
+/* Recipe step */
+.firstrun__recipes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-2);
+  margin-top: var(--at-sp-2);
+}
+.firstrun__recipe {
+  appearance: none;
+  text-align: left;
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-1);
+  padding: var(--at-sp-3);
+  background: var(--at-bg);
+  cursor: pointer;
+}
+.firstrun__recipe-title {
+  margin: 0;
+  font-size: var(--at-fs-md);
+  font-weight: 600;
+  color: var(--at-fg);
+}
+.firstrun__recipe-desc {
+  margin: 0;
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+  line-height: var(--at-lh-base);
+}
+.firstrun__recipe-meta {
+  margin-top: var(--at-sp-1);
+  font-size: var(--at-fs-xs);
+  color: var(--at-fg-muted);
+  display: flex;
+  gap: var(--at-sp-2);
+  flex-wrap: wrap;
+}
+.firstrun__recipe-empty {
+  margin: 0;
+  padding: var(--at-sp-3);
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+  text-align: center;
+  background: var(--at-bg-sunken);
+  border-radius: var(--at-radius-md);
+}
+
+/* Footer — fixed slots so buttons never jump across steps */
+.firstrun__footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--at-sp-2);
+  align-items: center;
+  margin-top: auto;
+  padding-top: var(--at-sp-4);
+  border-top: 1px solid var(--at-border);
+}
+.firstrun__slot {
+  display: flex;
+  min-height: 36px;
+}
+.firstrun__slot--back  { justify-content: flex-start; }
+.firstrun__slot--skip  { justify-content: center; }
+.firstrun__slot--next  { justify-content: flex-end; }
+.firstrun__slot > .qc-btn { white-space: nowrap; }
+/* === /First-Run wizard =================================================== */

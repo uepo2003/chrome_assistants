@@ -1,0 +1,155 @@
+/* Quickstart Copilot — design tokens.
+ *
+ * Single source of truth for color / spacing / radius / typography / shadow
+ * across popup, sidepanel, options, and (where reasonable) content overlays.
+ *
+ * Conventions:
+ *   --at-*           public token, safe to use in any surface CSS
+ *   --at-bg-*        surface backgrounds
+ *   --at-fg-*        foreground (text + icon) colors
+ *   --at-accent-*    primary accent (cyan-violet) and its on-color
+ *   --at-success/warning/danger  status colors
+ *   --at-border      neutral hairline
+ *   --at-sp-1..8     spacing scale (4px grid)
+ *   --at-radius-*    radius scale
+ *   --at-shadow-*    elevation shadows
+ *   --at-font-ui     UI font stack
+ *   --at-font-mono   monospace font stack
+ *   --at-dur-fast/normal animation durations (motion is auto-disabled below)
+ *
+ * Light is the default. Dark is enabled via `prefers-color-scheme: dark`.
+ * `prefers-reduced-motion: reduce` zeroes durations so any `transition` /
+ * `animation` declarations using these tokens collapse to instant.
+ */
+
+:root {
+  /* ---------- Color (light) ----------------------------------------- */
+  --at-bg:          #ffffff;
+  --at-bg-elev:     #f8fafc;          /* cards / nav backdrop */
+  --at-bg-sunken:   #f1f5f9;          /* inputs / subtle wells */
+  --at-fg:          #0f172a;
+  --at-fg-muted:    #64748b;
+  --at-fg-subtle:   #717f96;          /* darkened from #94a3b8 for WCAG (3:1 large UI) */
+
+  /* Light-mode accent/status colors are intentionally shifted DARKER than the
+   * Tailwind-500 baseline so that small-text contrast (pill labels, link
+   * text, danger button labels) crosses WCAG AA 4.5:1 against both white and
+   * the pill-soft (10% tint) backgrounds. See docs/migration-v0.3.md for
+   * the full contrast matrix and the calculation methodology. */
+  --at-accent:      #4f46e5;          /* indigo-600 — 6.29:1 on white */
+  --at-accent-hov:  #4338ca;
+  --at-accent-soft: rgba(79, 70, 229, 0.10);
+  --at-accent-fg:   #ffffff;
+
+  --at-success:     #047857;          /* emerald-700 — 5.48:1 on white */
+  --at-success-soft:rgba(4, 120, 87, 0.10);
+  --at-warning:     #b45309;          /* amber-700 — 5.02:1 on white */
+  --at-warning-soft:rgba(180, 83, 9, 0.12);
+  --at-danger:      #dc2626;          /* red-600 — 4.83:1 on white */
+  --at-danger-soft: rgba(220, 38, 38, 0.10);
+
+  --at-border:      #e2e8f0;
+  --at-border-soft: #eef2f6;
+
+  /* ---------- Typography -------------------------------------------- */
+  --at-font-ui:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN",
+    "Noto Sans CJK JP", "Yu Gothic UI", sans-serif;
+  --at-font-mono:
+    ui-monospace, "SF Mono", Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+
+  --at-fs-xs:   11px;
+  --at-fs-sm:   12px;
+  --at-fs-base: 13px;
+  --at-fs-md:   14px;
+  --at-fs-lg:   16px;
+  --at-fs-xl:   20px;
+  --at-fs-2xl:  24px;
+  --at-lh-tight: 1.25;
+  --at-lh-base:  1.45;
+  --at-lh-loose: 1.6;
+
+  /* ---------- Spacing (4px grid) ------------------------------------ */
+  --at-sp-1:  4px;
+  --at-sp-2:  8px;
+  --at-sp-3:  12px;
+  --at-sp-4:  16px;
+  --at-sp-5:  20px;
+  --at-sp-6:  24px;
+  --at-sp-7:  32px;
+  --at-sp-8:  40px;
+
+  /* ---------- Radius ------------------------------------------------ */
+  --at-radius-sm:   6px;
+  --at-radius-md:   10px;
+  --at-radius-lg:   14px;
+  --at-radius-pill: 999px;
+
+  /* ---------- Shadows ----------------------------------------------- */
+  --at-shadow-1: 0 1px 2px rgba(15, 23, 42, 0.05),
+                 0 1px 1px rgba(15, 23, 42, 0.03);
+  --at-shadow-2: 0 4px 12px rgba(15, 23, 42, 0.08),
+                 0 1px 2px rgba(15, 23, 42, 0.04);
+  --at-shadow-3: 0 12px 32px rgba(15, 23, 42, 0.16),
+                 0 2px 6px rgba(15, 23, 42, 0.06);
+
+  /* ---------- Motion ------------------------------------------------ */
+  --at-dur-fast:   120ms;
+  --at-dur-normal: 200ms;
+  --at-ease:       cubic-bezier(0.2, 0.6, 0.2, 1);
+
+  /* ---------- Focus ring -------------------------------------------- */
+  --at-focus-ring: 0 0 0 3px rgba(79, 70, 229, 0.35);
+}
+
+/* ---------- Dark mode --------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --at-bg:          #0b1020;          /* deep navy, not pitch black */
+    --at-bg-elev:     #11172b;
+    --at-bg-sunken:   #0f1426;
+    --at-fg:          #e2e8f0;
+    --at-fg-muted:    #94a3b8;
+    --at-fg-subtle:   #7a8aa0;          /* lifted from #64748b for AA (5.38:1) */
+
+    --at-accent:      #818cf8;          /* lighter indigo for AA contrast */
+    --at-accent-hov:  #a5b4fc;
+    --at-accent-soft: rgba(129, 140, 248, 0.16);
+    --at-accent-fg:   #0b1020;
+
+    --at-success:     #34d399;
+    --at-success-soft:rgba(52, 211, 153, 0.16);
+    --at-warning:     #fbbf24;
+    --at-warning-soft:rgba(251, 191, 36, 0.16);
+    /* Dark danger darkened slightly so #fff on it passes large-UI 3:1
+     * (was #f87171 = 2.77:1 fail). See docs/migration-v0.3.md. */
+    --at-danger:      #dc4747;
+    --at-danger-soft: rgba(220, 71, 71, 0.18);
+
+    --at-border:      #1f2740;
+    --at-border-soft: #182039;
+
+    --at-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4),
+                   0 1px 1px rgba(0, 0, 0, 0.25);
+    --at-shadow-2: 0 4px 16px rgba(0, 0, 0, 0.5),
+                   0 1px 3px rgba(0, 0, 0, 0.3);
+    --at-shadow-3: 0 16px 40px rgba(0, 0, 0, 0.6),
+                   0 2px 8px rgba(0, 0, 0, 0.35);
+
+    --at-focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.45);
+  }
+}
+
+/* Honour reduce-motion users: collapse all token-driven durations. Any CSS
+ * that uses `transition: ... var(--at-dur-fast)` or `animation-duration:
+ * var(--at-dur-normal)` becomes effectively instant. We keep the variables
+ * defined (rather than removing transition declarations entirely) so that
+ * focus rings and other UA defaults still appear cleanly. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --at-dur-fast:   0ms;
+    --at-dur-normal: 0ms;
+  }
+}

@@ -3,44 +3,46 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=340, initial-scale=1" />
-    <title>Auto Tutorial Skipper</title>
+    <title data-i18n="popup.brandName">Quickstart Copilot</title>
+    <link rel="stylesheet" href="../common/tokens.css" />
+    <link rel="stylesheet" href="../common/components.css" />
     <link rel="stylesheet" href="popup.css" />
   </head>
-  <body>
+  <body class="qc-root">
     <main class="app" id="app">
       <header class="header">
         <div class="brand">
-          <div class="brand__badge" aria-hidden="true">AT</div>
+          <div class="brand__badge" aria-hidden="true" data-i18n="brand.shortBadge">QC</div>
           <div class="brand__text">
-            <h1 class="brand__name" data-i18n="popup.brandName">Browser Copilot</h1>
-            <p class="brand__subtitle" data-i18n="popup.brandSubtitle">Goal-driven assistant for your tab</p>
+            <h1 class="brand__name" data-i18n="popup.brandName">Quickstart Copilot</h1>
+            <p class="brand__subtitle" data-i18n="popup.brandSubtitle">Vibe coding setup, on autopilot</p>
           </div>
         </div>
       </header>
 
-      <section class="status-card" aria-live="polite">
-        <div class="pill" id="statusPill" data-state="idle">
-          <span class="pill__dot" aria-hidden="true"></span>
-          <span class="pill__label" id="statusLabel" data-i18n="popup.status.idle">Idle</span>
-        </div>
+      <section class="status-card">
+        <span class="qc-pill" id="statusPill" data-state="idle" role="status" aria-live="polite">
+          <span class="qc-pill__dot" aria-hidden="true"></span>
+          <span class="qc-pill__label" id="statusLabel" data-i18n="popup.status.idle">Idle</span>
+        </span>
         <div class="status-card__host" id="tabHost" title="">—</div>
       </section>
 
-      <!-- Default action: open copilot side panel, or quick-skip fallback -->
+      <!-- Default action: open copilot side panel (primary), quick-skip is secondary -->
       <section class="action" id="actionSection">
         <button
           type="button"
-          class="btn btn--primary"
+          class="qc-btn qc-btn--primary qc-btn--lg qc-btn--full"
           id="openCopilotBtn"
-          aria-label="Open the goal-driven copilot side panel"
+          aria-label="Open Sidepanel"
           data-i18n-aria-label="popup.openCopilotAria"
           data-i18n="popup.openCopilot"
         >
-          Open Copilot →
+          Open Sidepanel →
         </button>
         <button
           type="button"
-          class="btn btn--secondary"
+          class="qc-btn qc-btn--ghost qc-btn--sm qc-btn--full action__skip"
           id="primaryBtn"
           aria-label="Quick skip onboarding without a goal"
           data-i18n-aria-label="popup.quickSkipAria"
@@ -48,33 +50,38 @@
         >
           Quick skip onboarding
         </button>
-        <p class="action__hint" id="actionHint" hidden></p>
+        <p class="action__hint" id="actionHint" role="status" aria-live="polite" hidden></p>
       </section>
 
       <!-- Variant shown when no API key is set -->
-      <section class="warning" id="warningSection" hidden>
+      <section class="warning" id="warningSection" role="alert" aria-live="assertive" hidden>
         <h2 class="warning__title" data-i18n="popup.warningTitle">API key required</h2>
         <p class="warning__body" data-i18n="popup.warningBody">
           Add your Anthropic API key in settings to use AI-powered
           auto-progression.
         </p>
-        <button type="button" class="btn btn--primary" id="openSettingsBtn" data-i18n="popup.warningButton">
+        <button
+          type="button"
+          class="qc-btn qc-btn--primary qc-btn--full"
+          id="openSettingsBtn"
+          data-i18n="popup.warningButton"
+        >
           Open settings
         </button>
       </section>
 
       <section class="quick-settings">
-        <div class="field">
-          <label class="field__label" for="modeSelect" data-i18n="popup.field.mode">Mode</label>
-          <select id="modeSelect" class="field__select">
+        <div class="qc-field">
+          <label class="qc-field__label" for="modeSelect" data-i18n="popup.field.mode">Mode</label>
+          <select id="modeSelect" class="qc-select">
             <option value="rules" data-i18n="popup.mode.rules">Rules only</option>
             <option value="hybrid" selected data-i18n="popup.mode.hybrid">Hybrid</option>
             <option value="ai" data-i18n="popup.mode.ai">AI only</option>
           </select>
         </div>
-        <div class="field">
-          <label class="field__label" for="speedSelect" data-i18n="popup.field.speed">Speed</label>
-          <select id="speedSelect" class="field__select">
+        <div class="qc-field">
+          <label class="qc-field__label" for="speedSelect" data-i18n="popup.field.speed">Speed</label>
+          <select id="speedSelect" class="qc-select">
             <option value="slow" data-i18n="popup.speed.slow">Slow</option>
             <option value="normal" selected data-i18n="popup.speed.normal">Normal</option>
             <option value="fast" data-i18n="popup.speed.fast">Fast</option>
@@ -83,13 +90,14 @@
       </section>
 
       <section class="quick-settings quick-settings--lang">
-        <div class="field field--lang">
-          <label class="field__label" for="langSelect">Language</label>
-          <select id="langSelect" class="field__select">
+        <label class="lang-chip" for="langSelect">
+          <span class="lang-chip__label" aria-hidden="true">A文</span>
+          <select id="langSelect" class="lang-chip__select" aria-label="Language">
             <option value="en">English</option>
             <option value="ja">日本語</option>
           </select>
-        </div>
+          <span class="lang-chip__caret" aria-hidden="true">▾</span>
+        </label>
       </section>
 
       <footer class="footer">
@@ -99,12 +107,14 @@
           id="footerSettings"
           role="button"
         ><span data-i18n="popup.settings">Settings</span> <span aria-hidden="true">⚙</span></a>
-        <span class="footer__version">v0.1.0</span>
+        <span class="footer__version">v0.3.0</span>
       </footer>
     </main>
 
     <script src="../common/error-capture.js"></script>
     <script src="../common/i18n.js"></script>
+    <script src="../common/components.js"></script>
+    <script src="../common/feature-flags.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

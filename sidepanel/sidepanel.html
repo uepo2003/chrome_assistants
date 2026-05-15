@@ -3,21 +3,37 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title data-i18n="sidepanel.title">Browser Copilot</title>
+    <title data-i18n="sidepanel.title">Quickstart Copilot</title>
+    <link rel="stylesheet" href="../common/tokens.css" />
+    <link rel="stylesheet" href="../common/components.css" />
     <link rel="stylesheet" href="sidepanel.css" />
+    <link rel="stylesheet" href="sidepanel-catalog.css" />
   </head>
   <body>
-    <div class="app" data-state="idle">
+    <div class="app" data-state="idle" data-mode="catalog">
       <!-- Sticky top bar -->
       <header class="topbar">
         <div class="topbar__brand">
-          <div class="topbar__badge" aria-hidden="true">AT</div>
+          <div class="topbar__badge" aria-hidden="true" data-i18n="brand.shortBadge">QC</div>
           <div class="topbar__text">
-            <h1 class="topbar__title" data-i18n="sidepanel.title">Browser Copilot</h1>
+            <h1 class="topbar__title" data-i18n="sidepanel.title">Quickstart Copilot</h1>
             <p class="topbar__subtitle" id="hostLabel">—</p>
           </div>
         </div>
         <div class="topbar__actions">
+          <button
+            type="button"
+            id="backToCatalogBtn"
+            class="qc-btn qc-btn--ghost qc-btn--sm topbar__back"
+            data-i18n="catalog.openEnded.back"
+            hidden
+          >← Back to catalog</button>
+          <span
+            id="openEndedTag"
+            class="qc-pill topbar__tag"
+            data-i18n="catalog.openEnded.headerTag"
+            hidden
+          >Open-ended mode</span>
           <button
             type="button"
             id="langPill"
@@ -54,14 +70,317 @@
         </div>
       </header>
 
-      <!-- Scrollable chat / timeline -->
+      <!-- v0.3 migration upgrade banner. Shown once until dismissed. -->
+      <aside
+        id="upgradeBanner"
+        class="upgrade-banner"
+        role="region"
+        aria-label="Upgrade notice"
+        hidden
+      >
+        <div class="upgrade-banner__body">
+          <strong class="upgrade-banner__title" data-i18n="upgrade.banner.title">We redesigned things</strong>
+          <p class="upgrade-banner__text" data-i18n="upgrade.banner.body">
+            Open-ended mode is still available from the catalog footer.
+          </p>
+        </div>
+        <button
+          type="button"
+          id="upgradeBannerDismiss"
+          class="qc-btn qc-btn--secondary qc-btn--sm"
+          data-i18n="upgrade.banner.dismiss"
+        >Got it</button>
+      </aside>
+
+      <!-- Recipe catalog view (default home). Hidden in open-ended mode and during a recipe run. -->
+      <section
+        class="catalog"
+        id="catalog"
+        aria-label="Recipe catalog"
+      >
+        <div class="catalog__header">
+          <h2 class="catalog__heading" data-i18n="catalog.heading">Which setup are you tackling today?</h2>
+          <label class="catalog__search">
+            <span class="qc-sr-only" data-i18n="catalog.searchPlaceholder">Search recipes</span>
+            <input
+              type="search"
+              id="catalogSearch"
+              class="qc-input"
+              data-i18n-placeholder="catalog.searchPlaceholder"
+              placeholder="Search recipes..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <div
+            class="catalog__chips"
+            id="catalogChips"
+            role="tablist"
+            aria-label="Category filter"
+          ></div>
+          <p
+            class="catalog__count"
+            id="catalogCount"
+            aria-live="polite"
+          ></p>
+        </div>
+
+        <div
+          class="catalog__groups"
+          id="catalogGroups"
+          aria-label="Recipes"
+        ></div>
+
+        <p
+          class="catalog__empty"
+          id="catalogEmpty"
+          data-i18n="catalog.empty.noMatch"
+          hidden
+        >No recipes match your search.</p>
+
+        <footer class="catalog__footer">
+          <button
+            type="button"
+            id="openEndedCta"
+            class="qc-btn qc-btn--ghost"
+            data-i18n="catalog.openEnded.cta"
+          >Open-ended mode (advanced)</button>
+        </footer>
+      </section>
+
+      <!-- Recipe card template (cloned per recipe) -->
+      <template id="recipe-card">
+        <article
+          class="recipe-card qc-card qc-card--interactive"
+          role="button"
+          tabindex="0"
+          aria-label=""
+        >
+          <header class="recipe-card__head">
+            <span class="recipe-card__badge" aria-hidden="true"></span>
+            <span class="recipe-card__difficulty" data-difficulty=""></span>
+          </header>
+          <h3 class="recipe-card__title"></h3>
+          <p class="recipe-card__desc"></p>
+          <footer class="recipe-card__foot">
+            <span class="recipe-card__estimate"></span>
+            <button
+              type="button"
+              class="qc-btn qc-btn--primary qc-btn--sm recipe-card__run"
+              data-i18n="catalog.detail.run"
+            >Run</button>
+          </footer>
+        </article>
+      </template>
+
+      <!-- Live Run view: shown when a recipe (or open-ended run) is in progress. -->
+      <section
+        class="live"
+        id="liveRun"
+        aria-label="Live run"
+        hidden
+      >
+        <header class="live__head">
+          <span class="qc-pill live__pill" id="livePill" data-state="idle">
+            <span class="qc-pill__dot" aria-hidden="true"></span>
+            <span class="qc-pill__label" id="livePillLabel" data-i18n="pill.idle">Idle</span>
+          </span>
+          <h2 class="live__heading" id="liveHeading">—</h2>
+          <p class="live__counter" id="liveCounter" aria-live="polite"></p>
+          <p class="live__summary" id="liveSummary" aria-live="polite"></p>
+        </header>
+
+        <!-- Paused-for-human panel (shown only when data-state="paused").
+             role=alert + aria-live=assertive (Section 11.2): when the run
+             pauses for a human handoff the user needs to know NOW, even if
+             their focus is elsewhere in the sidepanel. -->
+        <div
+          class="live__paused qc-card"
+          id="pausedPanel"
+          role="alert"
+          aria-live="assertive"
+          hidden
+        >
+          <div class="live__paused-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <rect x="6" y="5" width="4" height="14" rx="1.5" fill="currentColor"/>
+              <rect x="14" y="5" width="4" height="14" rx="1.5" fill="currentColor"/>
+            </svg>
+          </div>
+          <div class="live__paused-body">
+            <h3 class="live__paused-title" data-i18n="live.paused.title">Paused — your turn</h3>
+            <p class="live__paused-why" id="pausedWhy"></p>
+          </div>
+          <button
+            type="button"
+            id="resumeBtn"
+            class="qc-btn qc-btn--primary"
+            data-i18n="live.paused.resume"
+          >Resume</button>
+        </div>
+
+        <div class="live__actions">
+          <button
+            type="button"
+            id="liveStopBtn"
+            class="qc-btn qc-btn--danger qc-btn--lg qc-btn--full"
+            data-i18n="common.stop"
+          >Stop</button>
+        </div>
+      </section>
+
+      <!-- Scrollable chat / timeline (used during a run AND in open-ended mode) -->
       <main
         class="chat"
         id="chat"
         aria-live="polite"
         aria-label="Copilot activity log"
       >
-        <div class="empty" id="empty">
+        <!-- === First-Run wizard (sec8-firstrun) ============================
+             Shown only while data-mode="firstrun". Lives at the very top of
+             <main class="chat"> so it sits in the same scrollable region as
+             the run timeline. Steps switch via .firstrun__step[data-step].
+             ================================================================ -->
+        <section
+          id="firstRun"
+          class="firstrun"
+          aria-label="First-run setup wizard"
+          hidden
+        >
+          <header class="firstrun__head">
+            <div
+              class="firstrun__dots"
+              id="firstRunDots"
+              role="progressbar"
+              aria-valuemin="1"
+              aria-valuemax="3"
+              aria-valuenow="1"
+              aria-label="First-run progress"
+            >
+              <span class="firstrun__dot" data-step="0"></span>
+              <span class="firstrun__dot" data-step="1"></span>
+              <span class="firstrun__dot" data-step="2"></span>
+            </div>
+            <p
+              class="firstrun__counter"
+              id="firstRunCounter"
+              aria-live="polite"
+            >Step 1 of 3</p>
+          </header>
+
+          <!-- Step 1 — Language -->
+          <div class="firstrun__step" data-step="0">
+            <h2 class="firstrun__title" data-i18n="firstRun.step1.title">Choose your language</h2>
+            <p class="firstrun__body" data-i18n="firstRun.step1.body">You can change this any time from settings.</p>
+            <div
+              class="firstrun__choices"
+              role="radiogroup"
+              aria-label="Language"
+              id="firstRunLangChoices"
+            >
+              <button
+                type="button"
+                class="firstrun__choice qc-card qc-card--interactive"
+                role="radio"
+                aria-checked="false"
+                data-lang="en"
+                id="firstRunLangEn"
+              >
+                <span class="firstrun__choice-icon" aria-hidden="true">EN</span>
+                <span class="firstrun__choice-label">English</span>
+              </button>
+              <button
+                type="button"
+                class="firstrun__choice qc-card qc-card--interactive"
+                role="radio"
+                aria-checked="false"
+                data-lang="ja"
+                id="firstRunLangJa"
+              >
+                <span class="firstrun__choice-icon" aria-hidden="true">JP</span>
+                <span class="firstrun__choice-label">日本語</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2 — API key -->
+          <div class="firstrun__step" data-step="1" hidden>
+            <h2 class="firstrun__title" data-i18n="firstRun.step2.title">Add your Anthropic API key</h2>
+            <p class="firstrun__body" data-i18n="firstRun.step2.body">Required for AI-driven steps. Stored only in your browser.</p>
+            <div class="firstrun__field qc-field">
+              <label class="qc-field__label" for="firstRunApiKey" data-i18n="options.sec.apiKey">Anthropic API key</label>
+              <div class="firstrun__key-row">
+                <input
+                  type="password"
+                  id="firstRunApiKey"
+                  class="qc-input firstrun__key-input"
+                  autocomplete="off"
+                  spellcheck="false"
+                  data-i18n-placeholder="options.apiKey.placeholder"
+                  placeholder="sk-ant-..."
+                />
+                <button
+                  type="button"
+                  id="firstRunTestKey"
+                  class="qc-btn qc-btn--secondary qc-btn--sm"
+                  data-i18n="firstRun.step2.testButton"
+                  disabled
+                >Test connection</button>
+              </div>
+              <p class="qc-field__hint" data-i18n="options.apiKey.helper">Stored locally in your browser. Never sent anywhere except api.anthropic.com.</p>
+              <p
+                class="firstrun__test-result"
+                id="firstRunTestResult"
+                role="status"
+                aria-live="polite"
+              ></p>
+            </div>
+          </div>
+
+          <!-- Step 3 — First recipe -->
+          <div class="firstrun__step" data-step="2" hidden>
+            <h2 class="firstrun__title" data-i18n="firstRun.step3.title">Try your first recipe</h2>
+            <p class="firstrun__body" data-i18n="firstRun.step3.body">Pick one to run now, or browse the full catalog.</p>
+            <div
+              class="firstrun__recipes"
+              id="firstRunRecipes"
+              role="list"
+            ></div>
+          </div>
+
+          <!-- Footer with fixed slots so buttons never jump between steps. -->
+          <footer class="firstrun__footer">
+            <div class="firstrun__slot firstrun__slot--back">
+              <button
+                type="button"
+                id="firstRunBack"
+                class="qc-btn qc-btn--ghost"
+                data-i18n="firstRun.back"
+                hidden
+              >Back</button>
+            </div>
+            <div class="firstrun__slot firstrun__slot--skip">
+              <button
+                type="button"
+                id="firstRunSkip"
+                class="qc-btn qc-btn--ghost"
+                hidden
+              ></button>
+            </div>
+            <div class="firstrun__slot firstrun__slot--next">
+              <button
+                type="button"
+                id="firstRunNext"
+                class="qc-btn qc-btn--primary"
+                data-i18n="firstRun.next"
+                disabled
+              >Next</button>
+            </div>
+          </footer>
+        </section>
+        <!-- === /First-Run wizard ============================================ -->
+
+        <div class="empty" id="empty" hidden>
           <div class="empty__icon" aria-hidden="true">✦</div>
           <p class="empty__title" data-i18n="sidepanel.empty.title">Tell me what you want to do.</p>
           <p class="empty__hint" data-i18n="sidepanel.empty.body">
@@ -71,8 +390,8 @@
         </div>
       </main>
 
-      <!-- Sticky input area -->
-      <footer class="composer">
+      <!-- Sticky input area: only visible in open-ended mode -->
+      <footer class="composer" id="composer">
         <label class="composer__label" for="goalInput" data-i18n="sidepanel.composer.label">Your goal</label>
         <div class="composer__row">
           <textarea
@@ -99,9 +418,123 @@
       </footer>
     </div>
 
+    <!-- Recipe detail modal -->
+    <div
+      class="qc-modal"
+      id="recipeDetailModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="recipeDetailTitle"
+      data-open="false"
+      hidden
+    >
+      <div class="qc-modal__backdrop" data-qc-close></div>
+      <div class="qc-modal__dialog">
+        <header class="qc-modal__head">
+          <h2 class="qc-modal__title" id="recipeDetailTitle">—</h2>
+          <button
+            type="button"
+            class="qc-btn qc-btn--ghost qc-btn--sm"
+            data-qc-close
+            data-i18n="catalog.detail.close"
+            aria-label="Close"
+          >Close</button>
+        </header>
+        <div class="qc-modal__body qc-stack-3">
+          <section class="recipe-detail__section">
+            <h3 class="recipe-detail__heading" data-i18n="catalog.detail.description">About</h3>
+            <p class="recipe-detail__desc" id="recipeDetailDesc"></p>
+            <p class="recipe-detail__verified" id="recipeDetailVerified"></p>
+          </section>
+          <section class="recipe-detail__section" id="recipeDetailStepsSection">
+            <h3 class="recipe-detail__heading" data-i18n="catalog.detail.steps">Expected steps</h3>
+            <ol class="recipe-detail__list" id="recipeDetailSteps"></ol>
+          </section>
+          <section class="recipe-detail__section" id="recipeDetailPrereqSection">
+            <h3 class="recipe-detail__heading" data-i18n="catalog.detail.prerequisites">Prerequisites</h3>
+            <ul class="recipe-detail__list" id="recipeDetailPrereq"></ul>
+          </section>
+          <section class="recipe-detail__section" id="recipeDetailHandoffSection">
+            <h3 class="recipe-detail__heading" data-i18n="catalog.detail.humanHandoff">Human checkpoints</h3>
+            <ul class="recipe-detail__list" id="recipeDetailHandoff"></ul>
+          </section>
+        </div>
+        <footer class="qc-modal__footer">
+          <button
+            type="button"
+            class="qc-btn qc-btn--ghost"
+            data-qc-close
+            data-i18n="catalog.detail.close"
+          >Close</button>
+          <button
+            type="button"
+            id="recipeDetailRunBtn"
+            class="qc-btn qc-btn--primary"
+            data-i18n="catalog.detail.run"
+          >Run</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Recipe preview modal -->
+    <div
+      class="qc-modal"
+      id="recipePreviewModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="recipePreviewTitle"
+      data-open="false"
+      hidden
+    >
+      <div class="qc-modal__backdrop" data-qc-close></div>
+      <div class="qc-modal__dialog">
+        <header class="qc-modal__head">
+          <h2 class="qc-modal__title" id="recipePreviewTitle" data-i18n="catalog.preview.heading">Before we start</h2>
+          <button
+            type="button"
+            class="qc-btn qc-btn--ghost qc-btn--sm"
+            data-qc-close
+            data-i18n="catalog.preview.cancel"
+            aria-label="Cancel"
+          >Cancel</button>
+        </header>
+        <div class="qc-modal__body qc-stack-3">
+          <section class="recipe-preview__section" id="recipePreviewTouchSection">
+            <h3 class="recipe-preview__heading recipe-preview__heading--touch" data-i18n="catalog.preview.willTouch">Will touch</h3>
+            <ul class="recipe-preview__list" id="recipePreviewTouch"></ul>
+          </section>
+          <section class="recipe-preview__section" id="recipePreviewNotSection">
+            <h3 class="recipe-preview__heading recipe-preview__heading--not" data-i18n="catalog.preview.willNotTouch">Will NOT touch</h3>
+            <ul class="recipe-preview__list" id="recipePreviewNot"></ul>
+          </section>
+          <section class="recipe-preview__section" id="recipePreviewHandoffSection">
+            <h3 class="recipe-preview__heading" data-i18n="catalog.preview.handoff">You'll handle these manually</h3>
+            <ul class="recipe-preview__list" id="recipePreviewHandoff"></ul>
+          </section>
+          <p class="recipe-preview__tokens" id="recipePreviewTokens"></p>
+        </div>
+        <footer class="qc-modal__footer">
+          <button
+            type="button"
+            class="qc-btn qc-btn--ghost"
+            data-qc-close
+            data-i18n="catalog.preview.cancel"
+          >Cancel</button>
+          <button
+            type="button"
+            id="recipePreviewConfirmBtn"
+            class="qc-btn qc-btn--primary"
+            data-i18n="catalog.preview.confirm"
+          >Run</button>
+        </footer>
+      </div>
+    </div>
+
     <script src="../common/error-capture.js"></script>
     <script src="../common/i18n.js"></script>
     <script src="../common/messages.js"></script>
+    <script src="../common/components.js"></script>
+    <script src="../common/feature-flags.js"></script>
     <script src="sidepanel.js"></script>
   </body>
 </html>

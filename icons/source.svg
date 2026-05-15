@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Quickstart Copilot brand mark. Canonical design source.
+     Background: #0EA5E9 (cyan-500), rounded corners ~22%.
+     Foreground: white QC monogram.
+     Export to PNG at 16 / 48 / 128 for the Chrome extension. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect x="0" y="0" width="128" height="128" rx="28" ry="28" fill="#0EA5E9"/>
+  <g fill="#FFFFFF" font-family="-apple-system, 'SF Pro Display', 'Inter', 'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="64" text-anchor="middle" dominant-baseline="central">
+    <text x="64" y="68" letter-spacing="-2">QC</text>
+  </g>
+</svg>

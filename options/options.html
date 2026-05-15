@@ -2,22 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Auto Tutorial Skipper — Options</title>
+  <title data-i18n="options.title.brand">Quickstart Copilot — Options</title>
+  <link rel="stylesheet" href="../common/tokens.css" />
+  <link rel="stylesheet" href="../common/components.css" />
   <link rel="stylesheet" href="options.css" />
 </head>
-<body>
+<body class="qc-root">
   <main class="page">
     <header class="page-header">
-      <h1 data-i18n="options.title.brand">Browser Copilot</h1>
-      <p class="page-subtitle" data-i18n="options.title.subtitle">Configure how the extension auto-progresses onboarding tutorials.</p>
+      <div class="brand">
+        <div class="brand__badge" aria-hidden="true" data-i18n="brand.shortBadge">QC</div>
+        <div class="brand__text">
+          <h1 class="page-title" data-i18n="options.title.brand">Quickstart Copilot</h1>
+          <p class="page-subtitle" data-i18n="options.title.subtitle">Vibe coding setup, on autopilot — configure how recipes run.</p>
+        </div>
+      </div>
     </header>
 
     <!-- Section 0: Language -->
-    <section class="card" aria-labelledby="sec-lang">
-      <h2 id="sec-lang" data-i18n="options.sec.language">Language / 言語</h2>
-      <p class="section-desc" data-i18n="options.language.desc">Change the UI language. Takes effect immediately across popup, side panel, and this page.</p>
-      <div class="actions">
-        <select id="lang-select" class="model-input">
+    <section class="qc-card section" aria-labelledby="sec-lang">
+      <h2 id="sec-lang" class="section__title" data-i18n="options.sec.language">Language / 言語</h2>
+      <p class="section__desc" data-i18n="options.language.desc">Change the UI language. Takes effect immediately across popup, side panel, and this page.</p>
+      <div class="qc-field">
+        <select id="lang-select" class="qc-select">
           <option value="en">English</option>
           <option value="ja">日本語</option>
         </select>
@@ -25,110 +32,121 @@
     </section>
 
     <!-- Section 1: API key -->
-    <section class="card" aria-labelledby="sec-key">
-      <h2 id="sec-key" data-i18n="options.sec.apiKey">Anthropic API key</h2>
-      <p class="section-desc" data-i18n="options.sec.apiKeyDesc">Required to talk to Claude when the extension can't decide locally.</p>
+    <section class="qc-card section" aria-labelledby="sec-key">
+      <h2 id="sec-key" class="section__title" data-i18n="options.sec.apiKey">Anthropic API key</h2>
+      <p class="section__desc" data-i18n="options.sec.apiKeyDesc">Required to talk to Claude when the extension can't decide locally.</p>
 
-      <label class="field-label" for="api-key" data-i18n="options.sec.apiKey">Anthropic API key</label>
-      <div class="key-row">
-        <input
-          id="api-key"
-          type="password"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="sk-ant-..."
-        />
-        <button
-          id="toggle-key"
-          type="button"
-          class="icon-btn"
-          aria-label="Show or hide API key"
-          aria-pressed="false"
-          title="Show / hide"
-        >
-          <span id="toggle-key-icon" aria-hidden="true">&#128065;</span>
-        </button>
+      <div class="qc-field">
+        <label class="qc-field__label" for="api-key" data-i18n="options.sec.apiKey">Anthropic API key</label>
+        <div class="key-row">
+          <input
+            id="api-key"
+            class="qc-input key-row__input"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="sk-ant-..."
+            data-i18n-placeholder="options.apiKey.placeholder"
+          />
+          <button
+            id="toggle-key"
+            type="button"
+            class="icon-btn"
+            aria-label="Show or hide API key"
+            aria-pressed="false"
+            title="Show / hide"
+          >
+            <span id="toggle-key-icon" aria-hidden="true">&#128065;</span>
+          </button>
+        </div>
+        <p id="key-warning" class="qc-field__hint key-warning" role="alert" aria-live="assertive" hidden data-i18n="options.apiKey.warning">
+          Heads up: keys usually start with sk-ant-. Saving anyway.
+        </p>
+        <p class="qc-field__hint">
+          <span data-i18n="options.apiKey.helper">Stored locally in your browser. Never sent anywhere except api.anthropic.com.</span>
+          <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" data-i18n="options.apiKey.getKey">Get a key →</a>
+        </p>
       </div>
-      <p id="key-warning" class="warning" hidden data-i18n="options.apiKey.warning">
-        Heads up: keys usually start with sk-ant-. Saving anyway.
-      </p>
-      <p class="helper">
-        <span data-i18n="options.apiKey.helper">Stored locally in your browser. Never sent anywhere except api.anthropic.com.</span>
-        <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" data-i18n="options.apiKey.getKey">Get a key →</a>
-      </p>
 
       <div class="actions">
-        <button id="save-key" type="button" class="btn btn-primary" data-i18n="common.save">Save</button>
-        <button id="test-key" type="button" class="btn btn-secondary" disabled>
+        <button id="save-key" type="button" class="qc-btn qc-btn--primary" data-i18n="common.save">Save</button>
+        <button id="test-key" type="button" class="qc-btn qc-btn--secondary" disabled>
           <span class="btn-label" data-i18n="options.apiKey.testButton">Test connection</span>
           <span id="test-spinner" class="spinner" hidden aria-hidden="true"></span>
         </button>
-        <button id="cancel-test" type="button" class="btn btn-ghost" hidden data-i18n="common.cancel">Cancel</button>
-        <span id="test-elapsed" class="test-elapsed" aria-live="polite" hidden></span>
+        <button id="cancel-test" type="button" class="qc-btn qc-btn--ghost" hidden data-i18n="common.cancel">Cancel</button>
+        <span id="test-elapsed" class="test-elapsed" role="status" aria-live="polite" hidden></span>
         <span id="test-result" class="test-result" role="status" aria-live="polite"></span>
         <span id="save-toast" class="toast" role="status" aria-live="polite" hidden data-i18n="options.apiKey.savedToast">Saved ✓</span>
       </div>
     </section>
 
     <!-- Section 2: Behavior -->
-    <section class="card" aria-labelledby="sec-behavior">
-      <h2 id="sec-behavior" data-i18n="options.sec.behavior">Behavior</h2>
-      <p class="section-desc" data-i18n="options.sec.behaviorDesc">Tune how aggressively the extension decides and how fast it acts.</p>
+    <section class="qc-card section" aria-labelledby="sec-behavior">
+      <h2 id="sec-behavior" class="section__title" data-i18n="options.sec.behavior">Behavior</h2>
+      <p class="section__desc" data-i18n="options.sec.behaviorDesc">Tune how aggressively the extension decides and how fast it acts.</p>
 
       <fieldset class="group">
         <legend data-i18n="options.behavior.mode">Mode</legend>
         <label class="radio">
           <input type="radio" name="mode" value="rules" />
           <span class="radio-body">
-            <span class="radio-title">Rules only</span>
-            <span class="radio-desc">Fastest. Uses local heuristics for common Next / OK / Skip buttons.</span>
+            <span class="radio-title" data-i18n="options.mode.rules.title">Rules only</span>
+            <span class="radio-desc" data-i18n="options.mode.rules.desc">Fastest. Uses local heuristics for common Next / OK / Skip buttons.</span>
           </span>
         </label>
         <label class="radio">
           <input type="radio" name="mode" value="hybrid" />
           <span class="radio-body">
-            <span class="radio-title">Hybrid <span class="tag">default</span></span>
-            <span class="radio-desc">Rules first, asks Claude when unsure. Recommended.</span>
+            <span class="radio-title">
+              <span data-i18n="options.mode.hybrid.title">Hybrid</span>
+              <span class="tag" data-i18n="options.mode.hybrid.tag">default</span>
+            </span>
+            <span class="radio-desc" data-i18n="options.mode.hybrid.desc">Rules first, asks Claude when unsure. Recommended.</span>
           </span>
         </label>
         <label class="radio">
           <input type="radio" name="mode" value="ai" />
           <span class="radio-body">
-            <span class="radio-title">AI only</span>
-            <span class="radio-desc">Always asks Claude. Most flexible, costs more.</span>
+            <span class="radio-title" data-i18n="options.mode.ai.title">AI only</span>
+            <span class="radio-desc" data-i18n="options.mode.ai.desc">Always asks Claude. Most flexible, costs more.</span>
           </span>
         </label>
       </fieldset>
 
       <fieldset class="group">
-        <legend>Speed</legend>
+        <legend data-i18n="options.behavior.speed">Speed</legend>
         <label class="radio">
           <input type="radio" name="speed" value="slow" />
           <span class="radio-body">
-            <span class="radio-title">Slow</span>
-            <span class="radio-desc">Easy to follow visually.</span>
+            <span class="radio-title" data-i18n="options.speed.slow.title">Slow</span>
+            <span class="radio-desc" data-i18n="options.speed.slow.desc">Easy to follow visually.</span>
           </span>
         </label>
         <label class="radio">
           <input type="radio" name="speed" value="normal" />
           <span class="radio-body">
-            <span class="radio-title">Normal <span class="tag">default</span></span>
-            <span class="radio-desc">Balanced.</span>
+            <span class="radio-title">
+              <span data-i18n="options.speed.normal.title">Normal</span>
+              <span class="tag" data-i18n="options.speed.normal.tag">default</span>
+            </span>
+            <span class="radio-desc" data-i18n="options.speed.normal.desc">Balanced.</span>
           </span>
         </label>
         <label class="radio">
           <input type="radio" name="speed" value="fast" />
           <span class="radio-body">
-            <span class="radio-title">Fast</span>
-            <span class="radio-desc">Minimal animation.</span>
+            <span class="radio-title" data-i18n="options.speed.fast.title">Fast</span>
+            <span class="radio-desc" data-i18n="options.speed.fast.desc">Minimal animation.</span>
           </span>
         </label>
       </fieldset>
 
-      <div class="group">
-        <label class="field-label" for="model">Model</label>
+      <div class="qc-field">
+        <label class="qc-field__label" for="model" data-i18n="options.behavior.model">Model</label>
         <input
           id="model"
+          class="qc-input"
           type="text"
           list="model-suggestions"
           autocomplete="off"
@@ -140,23 +158,47 @@
           <option value="claude-sonnet-4-6"></option>
           <option value="claude-opus-4-7"></option>
         </datalist>
-        <p class="helper">Defaults to claude-haiku-4-5-20251001.</p>
+        <p class="qc-field__hint" data-i18n="options.behavior.modelHelper">Defaults to claude-haiku-4-5-20251001.</p>
       </div>
 
       <div class="group">
         <label class="checkbox">
           <input id="auto-start" type="checkbox" />
           <span class="checkbox-body">
-            <span class="checkbox-title">Auto-start on page load</span>
-            <span class="checkbox-desc">When a page looks like a tutorial, start automatically without clicking the toolbar icon.</span>
+            <span class="checkbox-title" data-i18n="options.behavior.autoStart">Auto-start on page load</span>
+            <span class="checkbox-desc" data-i18n="options.behavior.autoStartDesc">When a page looks like a tutorial, start automatically without clicking the toolbar icon.</span>
           </span>
         </label>
       </div>
     </section>
 
-    <!-- Section 3: Privacy -->
-    <section class="card" aria-labelledby="sec-privacy">
-      <h2 id="sec-privacy" data-i18n="options.sec.privacy">Privacy</h2>
+    <!-- Section 3: Maintenance -->
+    <section class="qc-card section" aria-labelledby="sec-maintenance">
+      <h2 id="sec-maintenance" class="section__title" data-i18n="options.sec.maintenance">Maintenance</h2>
+      <div class="actions actions--stack">
+        <button
+          id="reset-first-run"
+          type="button"
+          class="qc-btn qc-btn--secondary"
+          data-i18n="options.maintenance.resetFirstRun"
+        >
+          Reset first-run wizard
+        </button>
+        <button
+          id="recheck-recipes"
+          type="button"
+          class="qc-btn qc-btn--secondary"
+          data-i18n="options.maintenance.revalidate"
+        >
+          Re-check recipe catalog
+        </button>
+        <span id="maintenance-toast" class="toast maintenance-toast" role="status" aria-live="polite" hidden></span>
+      </div>
+    </section>
+
+    <!-- Section 4: Privacy -->
+    <section class="qc-card section" aria-labelledby="sec-privacy">
+      <h2 id="sec-privacy" class="section__title" data-i18n="options.sec.privacy">Privacy</h2>
       <p class="privacy-body" data-i18n="options.privacy.body">
         When auto-progression is active, this extension sends a compact text summary of the visible
         page (URL, title, and visible button/input labels) to Claude. It does NOT send screenshots,
@@ -164,10 +206,10 @@
       </p>
     </section>
 
-    <!-- Section 4: Developer / Error log -->
-    <section class="card" aria-labelledby="sec-dev">
-      <h2 id="sec-dev" data-i18n="options.sec.dev">Developer</h2>
-      <p class="section-desc" data-i18n="options.dev.desc">
+    <!-- Section 5: Developer / Error log -->
+    <section class="qc-card section" aria-labelledby="sec-dev">
+      <h2 id="sec-dev" class="section__title" data-i18n="options.sec.dev">Developer</h2>
+      <p class="section__desc" data-i18n="options.dev.desc">
         When dev mode is on, every console.error / console.warn / uncaught exception / unhandled rejection
         from every context is forwarded to a single ring buffer.
       </p>
@@ -183,8 +225,8 @@
       </div>
 
       <div class="dev-log-controls">
-        <button id="dev-refresh" type="button" class="btn btn-secondary" data-i18n="common.refresh">Refresh</button>
-        <button id="dev-clear" type="button" class="btn btn-ghost" data-i18n="common.clear">Clear</button>
+        <button id="dev-refresh" type="button" class="qc-btn qc-btn--secondary qc-btn--sm" data-i18n="common.refresh">Refresh</button>
+        <button id="dev-clear" type="button" class="qc-btn qc-btn--ghost qc-btn--sm" data-i18n="common.clear">Clear</button>
         <label class="checkbox checkbox-inline">
           <input id="dev-auto-refresh" type="checkbox" checked />
           <span class="checkbox-body">
@@ -201,13 +243,15 @@
     </section>
 
     <footer class="page-footer">
-      Browser Copilot &middot; v0.2.0
+      <span data-i18n="brand.name">Quickstart Copilot</span> &middot; v0.3.0
     </footer>
   </main>
 
   <script src="../common/error-capture.js"></script>
   <script src="../common/i18n.js"></script>
   <script src="../common/messages.js"></script>
+  <script src="../common/components.js"></script>
+  <script src="../common/feature-flags.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

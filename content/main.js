@@ -34,6 +34,9 @@
     CONFIRM_REQUEST: "AT_CONFIRM_REQUEST",
     CONFIRM_RESPONSE: "AT_CONFIRM_RESPONSE",
     USER_STOP: "AT_USER_STOP",
+    // Recipe-driven handoff (Section 5).
+    PAUSED_FOR_HUMAN: "AT_PAUSED_FOR_HUMAN",
+    RESUME: "AT_RESUME",
   };
   var KEYS = globalThis.__AT_KEYS__ || {
     MODE: "at_mode",
@@ -67,6 +70,22 @@
   var currentStep = null;        // { stepIndex, totalSteps, step }
   var stepIterations = 0;        // exposed via __AT__.main for debugging
   var pendingAsks = new Map();   // askId -> { resolve, reject }
+
+  // ----- recipe context (Section 5) ---------------------------------------
+  // `currentRecipe` rides on every STEP_START when the Run is recipe-driven.
+  // Shape: { id, targetHost, humanHandoffPoints, successCriteria } | null
+  // For open-ended runs it's null and ALL recipe-aware code paths below
+  // short-circuit — guaranteeing the same behavior as before Section 5.
+  var currentRecipe = null;
+  // `pendingResume` holds the resolver for an in-flight handoff pause.
+  // While set, the step loop is awaiting a RESUME message from the sidepanel.
+  var pendingResume = null;      // { resolve, reject } | null
+  // `triggeredHandoffsThisStep` prevents re-pausing on the same `when` over and
+  // over within a single step (the page state often still matches just after
+  // the user clicks "Resume").
+  var triggeredHandoffsThisStep = new Set();
+  // Single-shot guard so we only fire RUN_COMPLETE once on successCriteria.
+  var recipeSuccessFired = false;
   // Most recent successfully-executed action of THIS step. Sent to the AI on
   // every iteration so Claude knows what it just did (prevents click-loops
   // where the AI keeps clicking the same input field instead of typing).
@@ -808,6 +827,34 @@
 
     function iter() {
       if (shouldStop()) return Promise.resolve("stopped");
+
+      // Recipe success short-circuit (Section 5). If the recipe declares a
+      // success URL/text and we've already navigated/rendered there, finish
+      // the run cleanly without waiting for the LLM. Open-ended runs have no
+      // recipe, so evaluateSuccessCriteria() returns false and we fall through
+      // to the exact pre-Section-5 flow.
+      if (currentRecipe && evaluateSuccessCriteria()) {
+        signalRecipeSuccess();
+        return Promise.resolve("recipe_success");
+      }
+
+      // Recipe handoff short-circuit. If a declared human-handoff point matches
+      // the current page (e.g. captcha visible, OAuth popup), pause the loop
+      // and wait for the user to click "Resume" in the sidepanel.
+      if (currentRecipe) {
+        var hp = detectHandoffPoint();
+        if (hp) {
+          return pauseForHandoff(hp).then(function () {
+            // Re-evaluate success in case the user finished the handoff
+            // (e.g. solved the captcha, then navigated to the success page).
+            if (shouldStop()) return "stopped";
+            return iter();
+          }, function () {
+            return "aborted";
+          });
+        }
+      }
+
       if (iterations >= MAX_STEP_ITERATIONS) {
         dbg("step loop: hit MAX_STEP_ITERATIONS");
         return Promise.resolve("stalled_iterations");
@@ -984,6 +1031,22 @@
     stepIterations = 0;
     lastAction = null;   // reset per step so the AI gets a clean anchor
 
+    // Recipe context (Section 5). SW attaches msg.recipe when the Run is
+    // recipe-driven; for open-ended Runs the field is null/undefined and all
+    // recipe-aware code paths short-circuit to the pre-existing flow. We
+    // reset unconditionally so a follow-on open-ended Run can never inherit
+    // a previous recipe-driven Run's hints.
+    currentRecipe = (msg.recipe && typeof msg.recipe === "object")
+      ? msg.recipe
+      : null;
+    // Allow the same handoff `when` to fire again on the next step.
+    triggeredHandoffsThisStep = new Set();
+    // Reset success-fired guard at the start of a Run so a fresh
+    // recipe-driven Run can complete on its own successCriteria.
+    if (currentStep.stepIndex === 0) {
+      recipeSuccessFired = false;
+    }
+
     try {
       var cursor = getCursor();
       if (cursor) {
@@ -1053,6 +1116,7 @@
   function handleUserStop() {
     dbg("USER_STOP received");
     clearPendingAsks(new Error("user_stop"));
+    clearPendingResume(new Error("user_stop"));
     stopRequested = true;
     running = false;
     loopGeneration++;
@@ -1060,6 +1124,9 @@
     runMode = null;
     currentStep = null;
     stepIterations = 0;
+    currentRecipe = null;
+    triggeredHandoffsThisStep = new Set();
+    recipeSuccessFired = false;
 
     try {
       var cursor = getCursor();
@@ -1076,17 +1143,312 @@
     sendRunAborted({ reason: "user_stop" });
   }
 
+  // ========================================================================
+  // ----- Recipe handoff matchers + successCriteria (Section 5) -----------
+  // ========================================================================
+
+  // Best-effort, text-based heuristics for the limited set of `when` keys our
+  // v1 recipes declare. Each matcher takes a small `ctx` ({ url, hostname,
+  // text, recipe }) and returns true when the page state indicates the human
+  // should take over. Keep them small and self-contained so they can be tuned
+  // (or A/B'd) without surgery elsewhere.
+  var RECIPE_HANDOFF_MATCHERS = {
+    "oauth-popup": function (ctx) {
+      if (!ctx.recipe || !ctx.recipe.targetHost) return false;
+      if (!ctx.hostname) return false;
+      if (hostnameMatchesTarget(ctx.hostname, ctx.recipe.targetHost)) return false;
+      var u = (ctx.url || "").toLowerCase();
+      return u.indexOf("oauth") !== -1 ||
+             u.indexOf("authorize") !== -1 ||
+             u.indexOf("login") !== -1;
+    },
+
+    "captcha": function () {
+      // Search visible iframes & images for known captcha providers.
+      var needles = ["captcha", "hcaptcha", "recaptcha"];
+      var els = [];
+      try {
+        els = els.concat([].slice.call(document.querySelectorAll("iframe, img")));
+      } catch (e) {}
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        var src = "";
+        try { src = (el.getAttribute && el.getAttribute("src")) || el.src || ""; }
+        catch (e) {}
+        if (!src) continue;
+        src = String(src).toLowerCase();
+        for (var j = 0; j < needles.length; j++) {
+          if (src.indexOf(needles[j]) !== -1 && isElementVisible(el)) return true;
+        }
+      }
+      return false;
+    },
+
+    "email-verification": function (ctx) {
+      var hay = ((ctx.url || "") + " " + (ctx.text || "")).toLowerCase();
+      return hay.indexOf("verify your email") !== -1 ||
+             hay.indexOf("verification link") !== -1 ||
+             hay.indexOf("verify email") !== -1 ||
+             hay.indexOf("メール認証") !== -1 ||
+             hay.indexOf("メールを確認") !== -1;
+    },
+
+    "paste-public-key": function (ctx) {
+      // Best-effort: page mentions "public key" / "SSH key" / "公開鍵" AND a
+      // textarea/input for pasting is on the page.
+      var hay = (ctx.text || "").toLowerCase();
+      if (hay.indexOf("public key") === -1 &&
+          hay.indexOf("ssh key") === -1 &&
+          hay.indexOf("公開鍵") === -1) return false;
+      try {
+        if (document.querySelector("textarea")) return true;
+      } catch (e) {}
+      return false;
+    },
+
+    "pick-password": function (ctx) {
+      var hay = (ctx.text || "").toLowerCase();
+      // "Create a password" / "Choose a password" / "パスワード"
+      if (hay.indexOf("create a password") === -1 &&
+          hay.indexOf("choose a password") === -1 &&
+          hay.indexOf("set a password") === -1 &&
+          hay.indexOf("パスワードを設定") === -1 &&
+          hay.indexOf("パスワード") === -1) return false;
+      try {
+        if (document.querySelector('input[type="password"]')) return true;
+      } catch (e) {}
+      return false;
+    },
+
+    "phone-verification": function (ctx) {
+      var hay = (ctx.text || "").toLowerCase();
+      // English: phone / SMS / verification code. Japanese: 電話 / コード / SMS.
+      var hasPhrase = hay.indexOf("phone") !== -1 ||
+                      hay.indexOf("sms") !== -1 ||
+                      hay.indexOf("verification code") !== -1 ||
+                      hay.indexOf("電話") !== -1 ||
+                      hay.indexOf("認証コード") !== -1 ||
+                      hay.indexOf("コードを入力") !== -1;
+      if (!hasPhrase) return false;
+      try {
+        // Look for any visible input near the prompt.
+        if (document.querySelector('input[type="tel"], input[autocomplete*="one-time-code"], input[name*="code" i], input[name*="phone" i]')) {
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    },
+
+    "copy-key": function (ctx) {
+      var hay = (ctx.text || "");
+      // Either an Anthropic-style sk-ant- key is on the page, or an OpenAI
+      // sk- prefix, or just literal "API key" + "copy" cues.
+      if (/\bsk-ant-[A-Za-z0-9_-]{8,}/.test(hay)) return true;
+      if (/\bsk-[A-Za-z0-9]{20,}/.test(hay)) return true;
+      var low = hay.toLowerCase();
+      return (low.indexOf("copy") !== -1 &&
+              (low.indexOf("api key") !== -1 || low.indexOf("apiキー") !== -1));
+    },
+
+    "env-vars": function (ctx) {
+      var hay = (ctx.text || "").toLowerCase();
+      return hay.indexOf("environment variables") !== -1 ||
+             hay.indexOf("env vars") !== -1 ||
+             hay.indexOf("環境変数") !== -1;
+    },
+
+    "repo-permission-confirm": function (ctx) {
+      var hay = (ctx.text || "").toLowerCase();
+      return (hay.indexOf("repository access") !== -1 ||
+              hay.indexOf("repository permission") !== -1 ||
+              hay.indexOf("install & authorize") !== -1 ||
+              hay.indexOf("リポジトリ") !== -1) &&
+             (hay.indexOf("authorize") !== -1 ||
+              hay.indexOf("install") !== -1 ||
+              hay.indexOf("許可") !== -1);
+    },
+  };
+
+  function hostnameMatchesTarget(hostname, targetHost) {
+    if (!hostname || !targetHost) return false;
+    var h = String(hostname).toLowerCase();
+    var t = String(targetHost).toLowerCase();
+    if (t.indexOf("*.") === 0) {
+      // Wildcard subdomain (e.g. '*.vercel.com').
+      var suffix = t.slice(1); // '.vercel.com'
+      return h === suffix.slice(1) || h.endsWith(suffix);
+    }
+    return h === t || h.endsWith("." + t);
+  }
+
+  function isElementVisible(el) {
+    if (!el) return false;
+    try {
+      var rect = el.getBoundingClientRect && el.getBoundingClientRect();
+      if (!rect) return true; // can't measure -> assume visible
+      if (rect.width === 0 && rect.height === 0) return false;
+      var style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+      if (style && (style.display === "none" || style.visibility === "hidden")) return false;
+      return true;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function getPageTextSnapshot() {
+    try {
+      var t = (document.body && document.body.innerText) || "";
+      // Truncate to ~10k chars so regex evaluation stays cheap on huge pages.
+      return t.length > 10000 ? t.slice(0, 10000) : t;
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function buildMatcherCtx() {
+    var url = "";
+    var hostname = "";
+    try { url = location.href || ""; } catch (e) {}
+    try { hostname = location.hostname || ""; } catch (e) {}
+    return {
+      url: url,
+      hostname: hostname,
+      text: getPageTextSnapshot(),
+      recipe: currentRecipe,
+    };
+  }
+
+  // Evaluate the recipe's humanHandoffPoints against the current page. If a
+  // declared `when` matches AND we have not already paused for it in this
+  // step, return the matching handoff point; otherwise return null.
+  function detectHandoffPoint() {
+    if (!currentRecipe || !Array.isArray(currentRecipe.humanHandoffPoints)) {
+      return null;
+    }
+    var ctx = buildMatcherCtx();
+    for (var i = 0; i < currentRecipe.humanHandoffPoints.length; i++) {
+      var hp = currentRecipe.humanHandoffPoints[i];
+      if (!hp || typeof hp.when !== "string") continue;
+      if (triggeredHandoffsThisStep.has(hp.when)) continue;
+      var matcher = RECIPE_HANDOFF_MATCHERS[hp.when];
+      if (typeof matcher !== "function") continue;
+      try {
+        if (matcher(ctx)) return hp;
+      } catch (e) {
+        warn("handoff matcher threw for", hp.when, e);
+      }
+    }
+    return null;
+  }
+
+  // Pause the step loop and wait for a RESUME message. Resolves once RESUME
+  // arrives (or rejects if the run is aborted/stopped first).
+  function pauseForHandoff(hp) {
+    triggeredHandoffsThisStep.add(hp.when);
+    sendStepProgress({
+      narration: "Paused — waiting for you",
+      action: "paused_for_human",
+      detail: (hp.why && (hp.why.en || hp.why.ja)) || hp.when,
+    });
+    safeSendBg(MSG.PAUSED_FOR_HUMAN, {
+      recipeId: currentRecipe ? currentRecipe.id : null,
+      when: hp.when,
+      why: hp.why || { en: "", ja: "" },
+    });
+    return new Promise(function (resolve, reject) {
+      pendingResume = { resolve: resolve, reject: reject };
+    });
+  }
+
+  function clearPendingResume(err) {
+    if (!pendingResume) return;
+    var p = pendingResume;
+    pendingResume = null;
+    try { p.reject(err instanceof Error ? err : new Error(String(err || "aborted"))); }
+    catch (e) {}
+  }
+
+  function handleResume() {
+    if (!pendingResume) {
+      dbg("RESUME: no pending pause");
+      return;
+    }
+    var p = pendingResume;
+    pendingResume = null;
+    try { p.resolve(true); } catch (e) {}
+    sendStepProgress({
+      narration: "Resumed",
+      action: "resume",
+      detail: "",
+    });
+  }
+
+  // Evaluate the recipe's successCriteria against current URL + page text.
+  // Returns true on the first match; false otherwise. Cheap regex; safe to
+  // call once per iter.
+  function evaluateSuccessCriteria() {
+    if (!currentRecipe || !Array.isArray(currentRecipe.successCriteria)) return false;
+    if (currentRecipe.successCriteria.length === 0) return false;
+    var url = "";
+    try { url = location.href || ""; } catch (e) {}
+    var text = null; // lazy — only build if we have any text criteria
+    for (var i = 0; i < currentRecipe.successCriteria.length; i++) {
+      var sc = currentRecipe.successCriteria[i];
+      if (!sc || typeof sc.pattern !== "string") continue;
+      var re;
+      try { re = new RegExp(sc.pattern); }
+      catch (e) {
+        warn("successCriteria regex compile failed for", sc.pattern, e);
+        continue;
+      }
+      if (sc.kind === "url") {
+        if (re.test(url)) return true;
+      } else if (sc.kind === "text") {
+        if (text === null) text = getPageTextSnapshot();
+        if (re.test(text)) return true;
+      }
+    }
+    return false;
+  }
+
+  // Fire RUN_COMPLETE once and stop the step loop cleanly.
+  function signalRecipeSuccess() {
+    if (recipeSuccessFired) return;
+    recipeSuccessFired = true;
+    var title = "";
+    try { title = (currentRecipe && currentRecipe.id) || ""; } catch (e) {}
+    sendStepProgress({
+      narration: "Success criteria met",
+      action: "recipe_success",
+      detail: title,
+    });
+    // content -> runtime broadcast reaches the sidepanel and the SW directly.
+    safeSendBg(MSG.RUN_COMPLETE, {
+      summary: title ? ("Completed: " + title) : "Completed",
+      recipeId: title || null,
+    });
+    // Stop the local step loop on the next tick.
+    stopRequested = true;
+    clearPendingAsks(new Error("recipe_success"));
+    clearPendingResume(new Error("recipe_success"));
+  }
+
   function handleRunComplete() {
     // Optional: background SW may broadcast this when the planner is fully
     // finished. Clean up the cursor so the page returns to normal.
     dbg("RUN_COMPLETE received");
     clearPendingAsks(new Error("run_complete"));
+    clearPendingResume(new Error("run_complete"));
     running = false;
     runMode = null;
     currentStep = null;
     stepIterations = 0;
     lastAction = null;
     chatHistory = [];
+    // Reset recipe state so a subsequent open-ended Run starts clean.
+    currentRecipe = null;
+    triggeredHandoffsThisStep = new Set();
+    recipeSuccessFired = false;
     try {
       var cursor = getCursor();
       if (cursor) {
@@ -1144,6 +1506,11 @@
         }
         case MSG.RUN_COMPLETE: {
           handleRunComplete();
+          sendResponse({ ok: true });
+          return false;
+        }
+        case MSG.RESUME: {
+          handleResume();
           sendResponse({ ok: true });
           return false;
         }

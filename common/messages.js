@@ -18,7 +18,7 @@
 
     // ----- Goal-driven copilot flow (new) ---------------------------------
     OPEN_PANEL: 'AT_OPEN_PANEL',             // popup -> background: open sidepanel for active tab
-    GOAL_SUBMIT: 'AT_GOAL_SUBMIT',           // sidepanel -> background: { goal, tabId }
+    GOAL_SUBMIT: 'AT_GOAL_SUBMIT',           // sidepanel -> background: { goal, tabId, recipeId? }
     PLAN_READY: 'AT_PLAN_READY',             // background -> sidepanel: { plan, tabId }
     PLAN_ERROR: 'AT_PLAN_ERROR',             // background -> sidepanel: { error, tabId }
     PLAN_APPROVED: 'AT_PLAN_APPROVED',       // sidepanel -> background: { plan, tabId }
@@ -34,6 +34,10 @@
     CONFIRM_REQUEST: 'AT_CONFIRM_REQUEST',   // content -> sidepanel: { askId, what, reason, risk }
     CONFIRM_RESPONSE: 'AT_CONFIRM_RESPONSE', // sidepanel -> content: { askId, approve }
     USER_STOP: 'AT_USER_STOP',               // sidepanel -> content: abort current run
+
+    // Recipe-driven handoff (Quickstart Copilot v0.3 — Section 5):
+    PAUSED_FOR_HUMAN: 'AT_PAUSED_FOR_HUMAN', // content -> sidepanel: { recipeId, when, why: {en, ja} }
+    RESUME: 'AT_RESUME',                     // sidepanel -> content: resume after human handoff
 
     // ----- Async-progress visibility ---------------------------------------
     AI_PROGRESS: 'AT_AI_PROGRESS',           // background -> sidepanel: { kind, elapsedMs, label }

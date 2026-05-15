@@ -1,0 +1,383 @@
+/* Quickstart Copilot — shared component styles.
+ *
+ * Depends on common/tokens.css. Include AFTER tokens.css and BEFORE the
+ * surface-specific stylesheet (popup/sidepanel/options) so per-surface
+ * overrides still win on specificity.
+ *
+ * Component classes are namespaced `qc-` to avoid colliding with the
+ * existing `.btn` / `.card` / `.field` already present in surface CSS.
+ * Surfaces can opt in incrementally; the legacy classes keep working.
+ */
+
+/* ---------- Base reset (token-aware) -------------------------------- */
+.qc-root {
+  font-family: var(--at-font-ui);
+  font-size: var(--at-fs-base);
+  line-height: var(--at-lh-base);
+  color: var(--at-fg);
+  background: var(--at-bg);
+}
+
+/* ---------- Button -------------------------------------------------- */
+.qc-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--at-sp-2);
+  padding: var(--at-sp-2) var(--at-sp-4);
+  border-radius: var(--at-radius-md);
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: var(--at-fs-base);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition:
+    background-color var(--at-dur-fast) var(--at-ease),
+    border-color     var(--at-dur-fast) var(--at-ease),
+    color            var(--at-dur-fast) var(--at-ease),
+    box-shadow       var(--at-dur-fast) var(--at-ease),
+    transform        var(--at-dur-fast) var(--at-ease);
+}
+.qc-btn:focus-visible {
+  /* Both the universal `outline` (declared at the bottom) AND the halo
+   * box-shadow apply; do NOT set `outline: none` (Section 11.1). */
+  box-shadow: var(--at-focus-ring);
+}
+.qc-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.qc-btn:disabled,
+.qc-btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.qc-btn--primary {
+  background: var(--at-accent);
+  color: var(--at-accent-fg);
+  border-color: var(--at-accent);
+  box-shadow: var(--at-shadow-1);
+}
+.qc-btn--primary:hover:not(:disabled) {
+  background: var(--at-accent-hov);
+  border-color: var(--at-accent-hov);
+}
+
+.qc-btn--secondary {
+  background: var(--at-bg);
+  color: var(--at-fg);
+  border-color: var(--at-border);
+}
+.qc-btn--secondary:hover:not(:disabled) {
+  background: var(--at-bg-elev);
+  border-color: var(--at-fg-subtle);
+}
+
+.qc-btn--ghost {
+  background: transparent;
+  color: var(--at-fg-muted);
+  border-color: transparent;
+}
+.qc-btn--ghost:hover:not(:disabled) {
+  background: var(--at-bg-elev);
+  color: var(--at-fg);
+}
+
+.qc-btn--danger {
+  background: var(--at-danger);
+  color: #fff;
+  border-color: var(--at-danger);
+}
+.qc-btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--at-danger) 88%, black);
+  border-color: color-mix(in srgb, var(--at-danger) 88%, black);
+}
+
+.qc-btn--sm {
+  padding: var(--at-sp-1) var(--at-sp-3);
+  font-size: var(--at-fs-sm);
+}
+.qc-btn--lg {
+  padding: var(--at-sp-3) var(--at-sp-5);
+  font-size: var(--at-fs-md);
+}
+.qc-btn--full {
+  width: 100%;
+}
+
+/* ---------- Pill (status indicator) -------------------------------- */
+.qc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--at-sp-2);
+  padding: 3px var(--at-sp-3);
+  border-radius: var(--at-radius-pill);
+  background: var(--at-bg-sunken);
+  color: var(--at-fg-muted);
+  border: 1px solid var(--at-border);
+  font-size: var(--at-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.qc-pill__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--at-fg-subtle);
+  flex: none;
+}
+
+.qc-pill[data-state="idle"]    { /* default */ }
+.qc-pill[data-state="running"] {
+  background: var(--at-success-soft);
+  color: var(--at-success);
+  border-color: color-mix(in srgb, var(--at-success) 30%, transparent);
+}
+.qc-pill[data-state="running"] .qc-pill__dot {
+  background: var(--at-success);
+  animation: qc-pulse 1.6s ease-in-out infinite;
+}
+.qc-pill[data-state="paused"] {
+  background: var(--at-warning-soft);
+  color: var(--at-warning);
+  border-color: color-mix(in srgb, var(--at-warning) 30%, transparent);
+}
+.qc-pill[data-state="paused"] .qc-pill__dot {
+  background: var(--at-warning);
+}
+.qc-pill[data-state="complete"] {
+  background: var(--at-success-soft);
+  color: var(--at-success);
+  border-color: color-mix(in srgb, var(--at-success) 30%, transparent);
+}
+.qc-pill[data-state="complete"] .qc-pill__dot {
+  background: var(--at-success);
+}
+.qc-pill[data-state="error"] {
+  background: var(--at-danger-soft);
+  color: var(--at-danger);
+  border-color: color-mix(in srgb, var(--at-danger) 30%, transparent);
+}
+.qc-pill[data-state="error"] .qc-pill__dot {
+  background: var(--at-danger);
+}
+
+@keyframes qc-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.85); }
+}
+
+/* ---------- Card --------------------------------------------------- */
+.qc-card {
+  background: var(--at-bg);
+  border: 1px solid var(--at-border);
+  border-radius: var(--at-radius-lg);
+  padding: var(--at-sp-4);
+  box-shadow: var(--at-shadow-1);
+}
+.qc-card--flat {
+  box-shadow: none;
+  background: var(--at-bg-elev);
+}
+.qc-card--interactive {
+  cursor: pointer;
+  transition:
+    border-color var(--at-dur-fast) var(--at-ease),
+    box-shadow   var(--at-dur-fast) var(--at-ease),
+    transform    var(--at-dur-fast) var(--at-ease);
+}
+.qc-card--interactive:hover {
+  border-color: color-mix(in srgb, var(--at-accent) 50%, var(--at-border));
+  box-shadow: var(--at-shadow-2);
+}
+.qc-card--interactive:focus-visible {
+  /* Universal outline (declared at bottom) handles the focus indicator.
+   * Card also gets a tinted border + halo to feel "focused" rather than
+   * just "outlined" — both layers coexist. */
+  box-shadow: var(--at-focus-ring);
+  border-color: var(--at-accent);
+}
+.qc-card[data-disabled="true"],
+.qc-card.qc-card--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: saturate(0.7);
+}
+
+/* ---------- Field (label + control) -------------------------------- */
+.qc-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-1);
+  min-width: 0;
+}
+.qc-field__label {
+  font-size: var(--at-fs-xs);
+  font-weight: 600;
+  color: var(--at-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.qc-field__hint {
+  font-size: var(--at-fs-xs);
+  color: var(--at-fg-muted);
+}
+.qc-field__control,
+.qc-input,
+.qc-select,
+.qc-textarea {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  font-family: inherit;
+  font-size: var(--at-fs-base);
+  color: var(--at-fg);
+  background: var(--at-bg);
+  border: 1px solid var(--at-border);
+  border-radius: var(--at-radius-md);
+  padding: var(--at-sp-2) var(--at-sp-3);
+  line-height: var(--at-lh-base);
+  transition:
+    border-color var(--at-dur-fast) var(--at-ease),
+    box-shadow   var(--at-dur-fast) var(--at-ease);
+}
+.qc-input:hover,
+.qc-select:hover,
+.qc-textarea:hover {
+  border-color: var(--at-fg-subtle);
+}
+.qc-input:focus-visible,
+.qc-select:focus-visible,
+.qc-textarea:focus-visible {
+  /* Inputs get a colored border + halo box-shadow on focus; the universal
+   * outline at the bottom of this file remains visible as a second layer
+   * (Section 11.1). */
+  border-color: var(--at-accent);
+  box-shadow: var(--at-focus-ring);
+}
+.qc-textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+.qc-select {
+  padding-right: var(--at-sp-7);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 4.5l3 3 3-3' fill='none' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right var(--at-sp-3) center;
+  cursor: pointer;
+}
+
+/* ---------- Modal -------------------------------------------------- */
+.qc-modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--at-sp-4);
+}
+.qc-modal[data-open="true"] {
+  display: flex;
+}
+.qc-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.qc-modal__dialog {
+  position: relative;
+  z-index: 1;
+  background: var(--at-bg);
+  color: var(--at-fg);
+  border: 1px solid var(--at-border);
+  border-radius: var(--at-radius-lg);
+  box-shadow: var(--at-shadow-3);
+  width: min(560px, 100%);
+  max-height: calc(100vh - 2 * var(--at-sp-4));
+  overflow: auto;
+  padding: var(--at-sp-5);
+}
+.qc-modal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--at-sp-3);
+  margin-bottom: var(--at-sp-3);
+}
+.qc-modal__title {
+  margin: 0;
+  font-size: var(--at-fs-lg);
+  font-weight: 600;
+  line-height: var(--at-lh-tight);
+}
+.qc-modal__body {
+  font-size: var(--at-fs-base);
+  color: var(--at-fg);
+  line-height: var(--at-lh-base);
+}
+.qc-modal__footer {
+  margin-top: var(--at-sp-5);
+  display: flex;
+  gap: var(--at-sp-2);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* ---------- Utility ------------------------------------------------ */
+.qc-stack-2 { display: flex; flex-direction: column; gap: var(--at-sp-2); }
+.qc-stack-3 { display: flex; flex-direction: column; gap: var(--at-sp-3); }
+.qc-stack-4 { display: flex; flex-direction: column; gap: var(--at-sp-4); }
+.qc-row     { display: flex; align-items: center; gap: var(--at-sp-2); }
+.qc-row--end{ justify-content: flex-end; }
+.qc-grow    { flex: 1; min-width: 0; }
+.qc-truncate{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qc-sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0);
+  white-space: nowrap; border: 0;
+}
+
+/* ---------- Focus baseline ---------------------------------------- */
+/*
+ * Two-layer focus indicator (Section 11.1):
+ *
+ *   1. Universal `*:focus-visible` outline ensures every focusable element
+ *      — including custom elements like `.qc-card[tabindex]`, links, and
+ *      anything authors mark `role="button"` — has a visible focus state
+ *      even if a surface stylesheet forgets to wire one up. Uses the accent
+ *      token so it inherits light/dark mode automatically.
+ *   2. The `box-shadow` ring kept on canonical controls (buttons, inputs)
+ *      remains as a stronger, "halo" focus that is more visually familiar
+ *      for users coming from modern web apps. Both layers can coexist — the
+ *      outline lives outside the element (no overlap with the halo).
+ *
+ * Authors writing surface-specific CSS should NOT set `outline: none`
+ * without providing an equally-visible substitute (see WCAG 2.4.7).
+ */
+*:focus-visible {
+  outline: 2px solid var(--at-accent);
+  outline-offset: 2px;
+}
+
+:where(button, [role="button"], a, input, select, textarea):focus-visible {
+  /* Keep the halo glow as a secondary indicator on canonical controls.
+   * Do NOT set `outline: none` here — the universal rule above must
+   * remain visible even if a per-surface stylesheet overrides box-shadow. */
+  box-shadow: var(--at-focus-ring);
+}

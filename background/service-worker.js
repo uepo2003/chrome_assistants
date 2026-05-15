@@ -8,6 +8,8 @@
 
 import { callClaude, callClaudeForStep } from './ai-client.js';
 import { generatePlan } from './planner.js';
+import { loadCatalog, getCatalog } from '../recipes/_loader.js';
+import { runHealthChecks, getHealth } from '../recipes/_health.js';
 
 // Keep these constants in sync with common/messages.js.
 const MSG = {
@@ -45,6 +47,13 @@ const MSG = {
   DEV_LOG_QUERY: 'AT_DEV_LOG_QUERY',
   DEV_LOG_CLEAR: 'AT_DEV_LOG_CLEAR',
   DEV_LOG_PUSH: 'AT_DEV_LOG_PUSH',
+  // Recipe catalog (Quickstart Copilot v0.3):
+  GET_RECIPE_CATALOG: 'AT_GET_RECIPE_CATALOG',
+  RECIPE_HEALTH_REFRESH: 'AT_RECIPE_HEALTH_REFRESH',
+  RECIPE_HEALTH_UPDATED: 'AT_RECIPE_HEALTH_UPDATED',
+  // Recipe-driven handoff:
+  PAUSED_FOR_HUMAN: 'AT_PAUSED_FOR_HUMAN',
+  RESUME: 'AT_RESUME',
 };
 
 // ---------- Dev log ring buffer + own-context capture ---------------------
@@ -145,6 +154,62 @@ const DEFAULTS = {
 };
 
 // ---------------------------------------------------------------------------
+// Recipe catalog bootstrap (Quickstart Copilot).
+// Validates and caches the v1 recipes at SW boot. Initial health probes run
+// ~2s later; failures must NOT surface to the user. See recipes/_health.js.
+// ---------------------------------------------------------------------------
+try {
+  loadCatalog();
+} catch (err) {
+  console.warn('[auto-tutorial] recipe catalog load failed:', err);
+}
+
+setTimeout(() => {
+  (async () => {
+    try {
+      const catalog = getCatalog();
+      await runHealthChecks(catalog.all);
+      try {
+        chrome.runtime.sendMessage({ type: MSG.RECIPE_HEALTH_UPDATED })
+          .catch(() => {});
+      } catch {}
+    } catch (err) {
+      // Per spec: health-check failures must not block catalog UI. Swallow.
+    }
+  })();
+}, 2000);
+
+/**
+ * Build the wire-shape for a recipe that's safe to send to UI surfaces.
+ * Pulls together everything the catalog/preview UIs need (and only that).
+ * @param {import('../recipes/_types.js').Recipe} r
+ */
+function toRecipeSummary(r) {
+  const health = getHealth(r.id);
+  return {
+    id: r.id,
+    category: r.category,
+    targetHost: r.targetHost,
+    applicableUrlPatterns: r.applicableUrlPatterns || [],
+    title: r.title,
+    description: r.description,
+    estimatedSteps: r.estimatedSteps,
+    estimatedSeconds: r.estimatedSeconds,
+    difficulty: r.difficulty,
+    prerequisites: r.prerequisites || [],
+    humanHandoffPoints: r.humanHandoffPoints,
+    successCriteria: r.successCriteria,
+    expectedSteps: r.expectedSteps || [],
+    willTouch: r.willTouch || [],
+    willNotTouch: r.willNotTouch || [],
+    tokenEstimate: r.tokenEstimate || null,
+    lastVerifiedAt: r.lastVerifiedAt,
+    disabled: health ? !health.ok : false,
+    healthCheckedAt: health ? health.checkedAt : null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Per-tab state. In-memory only; resets when SW restarts.
 // ---------------------------------------------------------------------------
 
@@ -177,10 +242,52 @@ function getRun(tabId) {
       pendingAskId: null,
       navigationCount: 0,
       lastResumeAt: 0,
+      // Recipe-driven Run context (Section 5). Populated when GOAL_SUBMIT
+      // carries a `recipeId`; left null for open-ended runs so the rest of the
+      // pipeline behaves exactly as before.
+      recipeId: null,
+      recipe: null,
+      // Local run-history bookkeeping (Section 12.4). Set on PLAN_APPROVED;
+      // historyRecorded is flipped after the first terminal event so subsequent
+      // duplicate RUN_COMPLETE/RUN_ABORTED messages don't re-append.
+      startedAt: 0,
+      historyRecorded: false,
     };
     runByTab.set(tabId, run);
   }
   return run;
+}
+
+/**
+ * Resolve a recipe by id via the in-memory catalog. Returns null if the id is
+ * absent, unknown, or the catalog failed to load (open-ended fallback).
+ * @param {unknown} recipeId
+ */
+function resolveRecipe(recipeId) {
+  if (typeof recipeId !== 'string' || recipeId.length === 0) return null;
+  try {
+    const catalog = getCatalog();
+    const r = catalog.byId.get(recipeId);
+    return r || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build the recipe payload that rides on STEP_START so the content-script
+ * orchestrator can evaluate handoff/success heuristics locally.
+ * Returns null for open-ended runs.
+ */
+function recipeStepPayload(run) {
+  if (!run || !run.recipe) return null;
+  const r = run.recipe;
+  return {
+    id: r.id,
+    targetHost: r.targetHost,
+    humanHandoffPoints: Array.isArray(r.humanHandoffPoints) ? r.humanHandoffPoints : [],
+    successCriteria: Array.isArray(r.successCriteria) ? r.successCriteria : [],
+  };
 }
 
 const MAX_NAVIGATIONS_PER_RUN = 8;
@@ -200,13 +307,55 @@ function isCopilotActive(tabId) {
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onInstalled.addListener(async (details) => {
-  if (details.reason === 'install') {
-    try {
-      const { at_api_key } = await chrome.storage.local.get('at_api_key');
-      if (!at_api_key) chrome.runtime.openOptionsPage();
-    } catch (err) {
-      console.warn('[auto-tutorial] onInstalled failed:', err);
+  // Quickstart Copilot v0.3: open the First-Run wizard in the sidepanel on
+  // first install only. On `'update'` we do nothing — the migration banner
+  // (Section 12.1) handles welcoming existing users back.
+  if (details.reason !== 'install') return;
+  try {
+    // Best-effort sidepanel open. setOptions makes the sidepanel route to
+    // sidepanel.html for any tab in this window; open() actually shows it.
+    if (chrome.sidePanel?.setOptions) {
+      try {
+        await chrome.sidePanel.setOptions({
+          path: 'sidepanel/sidepanel.html',
+          enabled: true,
+        });
+      } catch (err) {
+        console.warn('[auto-tutorial] onInstalled setOptions failed:', err);
+      }
     }
+    let opened = false;
+    if (chrome.sidePanel?.open) {
+      try {
+        // Resolve the active tab so we have a windowId / tabId for open().
+        const [activeTab] = await chrome.tabs.query({
+          active: true,
+          lastFocusedWindow: true,
+        });
+        const tabId = activeTab && typeof activeTab.id === 'number'
+          ? activeTab.id : undefined;
+        const windowId = activeTab && typeof activeTab.windowId === 'number'
+          ? activeTab.windowId : undefined;
+        const arg = typeof windowId === 'number'
+          ? { windowId }
+          : (typeof tabId === 'number' ? { tabId } : null);
+        if (arg) {
+          await chrome.sidePanel.open(arg);
+          opened = true;
+        }
+      } catch (err) {
+        // sidePanel.open requires a recent user gesture on some Chrome
+        // builds; on first install we may not have one. Fall through to
+        // the options-page fallback below so the user has *something*.
+        console.warn('[auto-tutorial] onInstalled sidePanel.open failed:', err);
+      }
+    }
+    if (!opened) {
+      // Fallback: open options so users without sidePanel.open still see UI.
+      try { chrome.runtime.openOptionsPage(); } catch {}
+    }
+  } catch (err) {
+    console.warn('[auto-tutorial] onInstalled failed:', err);
   }
 });
 
@@ -238,6 +387,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (run.navigationCount > MAX_NAVIGATIONS_PER_RUN) {
     console.warn('[auto-tutorial] aborting run: too many navigations on tab', tabId);
     run.status = 'aborted';
+    recordRunHistory(run, 'aborted');
     broadcastToSidepanel({
       type: MSG.RUN_ABORTED,
       tabId,
@@ -258,6 +408,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
   // Give the new content scripts a moment to inject + initialise.
   const step = run.plan[run.currentStepIndex];
+  const recipe = recipeStepPayload(run);
   setTimeout(() => {
     chrome.tabs.sendMessage(tabId, {
       type: MSG.STEP_START,
@@ -266,6 +417,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       totalSteps: run.plan.length,
       step,
       reason: 'page_navigated',
+      recipe,
     }).catch((err) => {
       console.warn('[auto-tutorial] resume STEP_START failed:', err && err.message);
     });
@@ -502,6 +654,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           run.currentStepIndex = 0;
           run.pendingAskId = null;
 
+          // Recipe linkage (Section 5). Resolve the recipe — if recipeId is
+          // missing or unknown, we keep `run.recipe === null` and the planner
+          // path behaves exactly like an open-ended Run.
+          const recipeId = typeof msg.recipeId === 'string' && msg.recipeId.length > 0
+            ? msg.recipeId
+            : null;
+          const recipe = resolveRecipe(recipeId);
+          run.recipeId = recipe ? recipe.id : null;
+          run.recipe = recipe || null;
+
           let url = '';
           let title = '';
           try {
@@ -536,6 +698,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               signal: abortCtrl.signal,
               timeoutMs: 60000,
               lang: await readLang(),
+              // Pass the resolved recipe (null for open-ended runs — the
+              // planner's prompt builder treats null as "byte-identical to
+              // pre-Section-5 behavior").
+              recipe: run.recipe,
             });
           } finally {
             stopProgress();
@@ -596,6 +762,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         run.pendingAskId = null;
         run.navigationCount = 0;
         run.lastResumeAt = 0;
+        // Local history bookkeeping (Section 12.4).
+        run.startedAt = Date.now();
+        run.historyRecorded = false;
 
         broadcastToSidepanel({
           type: MSG.RUN_STARTED,
@@ -611,6 +780,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             stepIndex: 0,
             totalSteps: run.plan.length,
             step,
+            recipe: recipeStepPayload(run),
           });
         } catch (err) {
           console.warn('[auto-tutorial] STEP_START forward failed:', err);
@@ -628,6 +798,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         run.currentStepIndex = 0;
         run.status = 'idle';
         run.pendingAskId = null;
+        run.recipeId = null;
+        run.recipe = null;
       }
       sendResponse({ ok: true });
       return false;
@@ -658,6 +830,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         run.currentStepIndex += 1;
         if (run.currentStepIndex >= run.plan.length) {
           run.status = 'done';
+          recordRunHistory(run, 'complete');
           broadcastToSidepanel({
             type: MSG.RUN_COMPLETE,
             tabId,
@@ -676,6 +849,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             stepIndex: run.currentStepIndex,
             totalSteps: run.plan.length,
             step: nextStep,
+            recipe: recipeStepPayload(run),
           });
         } catch (err) {
           console.warn('[auto-tutorial] STEP_START forward failed:', err);
@@ -779,10 +953,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const tabId = explicitTabId ?? senderTabId;
       if (typeof tabId === 'number') {
         const run = getRun(tabId);
+        // Record BEFORE clearing run.plan / run.recipeId so the history entry
+        // sees real values (stepCount, recipeId).
+        recordRunHistory(run, 'aborted');
         run.status = 'aborted';
         run.plan = [];
         run.currentStepIndex = 0;
         run.pendingAskId = null;
+        run.recipeId = null;
+        run.recipe = null;
       }
       // Content -> runtime broadcast reaches sidepanel directly; don't re-emit.
       sendResponse({ ok: true });
@@ -867,6 +1046,83 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return false;
     }
 
+    case MSG.GET_RECIPE_CATALOG: {
+      try {
+        const catalog = getCatalog();
+        const recipes = catalog.all.map(toRecipeSummary);
+        sendResponse({ ok: true, recipes });
+      } catch (err) {
+        sendResponse({
+          ok: false,
+          error: 'recipe_catalog_failed',
+          details: err && err.message ? String(err.message) : String(err),
+          recipes: [],
+        });
+      }
+      return false;
+    }
+
+    case MSG.RECIPE_HEALTH_REFRESH: {
+      (async () => {
+        try {
+          const catalog = getCatalog();
+          await runHealthChecks(catalog.all);
+          try {
+            chrome.runtime.sendMessage({ type: MSG.RECIPE_HEALTH_UPDATED })
+              .catch(() => {});
+          } catch {}
+          sendResponse({ ok: true });
+        } catch (err) {
+          // Swallow per spec: never block catalog UI on health failures.
+          sendResponse({ ok: false, error: 'health_check_failed' });
+        }
+      })();
+      return true;
+    }
+
+    case MSG.RECIPE_HEALTH_UPDATED: {
+      // Broadcast echoes — accept harmlessly so other contexts can listen.
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    case MSG.PAUSED_FOR_HUMAN: {
+      // Content -> runtime broadcast already reaches the sidepanel. We mark the
+      // run as 'waiting-user' (semantically the same as an ask) so the UI can
+      // render a paused state and stop showing the "running" indicator.
+      const tabId = explicitTabId ?? senderTabId;
+      if (typeof tabId === 'number') {
+        const run = getRun(tabId);
+        run.status = 'waiting-user';
+      }
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    case MSG.RESUME: {
+      (async () => {
+        const tabId = explicitTabId ?? senderTabId
+          ?? (await getActiveTabId());
+        if (typeof tabId !== 'number') {
+          sendResponse({ ok: false, error: 'no_tab_id' });
+          return;
+        }
+        const run = getRun(tabId);
+        // Only flip back to running if we were actually paused on a handoff.
+        if (run.status === 'waiting-user') run.status = 'running';
+        try {
+          await chrome.tabs.sendMessage(tabId, {
+            type: MSG.RESUME,
+            tabId,
+          });
+        } catch (err) {
+          console.warn('[auto-tutorial] RESUME forward failed:', err);
+        }
+        sendResponse({ ok: true });
+      })();
+      return true;
+    }
+
     case MSG.USER_STOP: {
       (async () => {
         const tabId = explicitTabId ?? senderTabId
@@ -876,6 +1132,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return;
         }
         const run = getRun(tabId);
+        // Record BEFORE clearing run.plan so stepCount/recipeId survive.
+        // Only record if the run was actually mid-flight — USER_STOP on an
+        // idle tab shouldn't bloat history.
+        if (run.status === 'running'
+          || run.status === 'waiting-user'
+          || run.status === 'awaiting-approval') {
+          recordRunHistory(run, 'aborted');
+        }
         run.status = 'aborted';
         run.plan = [];
         run.currentStepIndex = 0;
@@ -919,6 +1183,64 @@ function broadcastToSidepanel(payload) {
     chrome.runtime.sendMessage(payload).catch(() => {});
   } catch {
     // ignore
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Local Run history (Section 12.4).
+//
+// Append a terminal-status record to chrome.storage.local.at_run_history,
+// capped at RUN_HISTORY_MAX entries with oldest dropped first. Entirely
+// local — never leaves the browser, never exposed to UI in v1.
+//
+// Idempotent per run: callers must set run.historyRecorded = true after
+// invoking, so duplicate terminal events (e.g., content+SW both emit
+// RUN_COMPLETE on last step) don't double-record.
+// ---------------------------------------------------------------------------
+const RUN_HISTORY_KEY = 'at_run_history';
+const RUN_HISTORY_MAX = 20;
+
+/**
+ * Append a run-history entry. No-op if the run has already been recorded
+ * or if storage is unavailable.
+ * @param {object} run       - The per-tab run state object from runByTab.
+ * @param {'complete'|'aborted'} status
+ */
+async function recordRunHistory(run, status) {
+  if (!run || run.historyRecorded) return;
+  // Mark first so any concurrent terminal event sees the flag and bails out.
+  run.historyRecorded = true;
+
+  const entry = {
+    recipeId: typeof run.recipeId === 'string' ? run.recipeId : null,
+    startedAt: typeof run.startedAt === 'number' && run.startedAt > 0
+      ? run.startedAt
+      : 0,
+    endedAt: Date.now(),
+    status,
+    // stepCount: prefer plan length (the plan can be cleared on abort, so
+    // read currentStepIndex as a fallback for completed-before-clearing).
+    stepCount: Array.isArray(run.plan) && run.plan.length > 0
+      ? run.plan.length
+      : (typeof run.currentStepIndex === 'number' ? run.currentStepIndex : 0),
+  };
+
+  try {
+    const out = await chrome.storage.local.get(RUN_HISTORY_KEY);
+    const existing = Array.isArray(out && out[RUN_HISTORY_KEY])
+      ? out[RUN_HISTORY_KEY]
+      : [];
+    const next = existing.concat([entry]);
+    // Cap at RUN_HISTORY_MAX, dropping the oldest entries first.
+    const trimmed = next.length > RUN_HISTORY_MAX
+      ? next.slice(next.length - RUN_HISTORY_MAX)
+      : next;
+    await chrome.storage.local.set({ [RUN_HISTORY_KEY]: trimmed });
+  } catch (err) {
+    // Best-effort: failure to write history must never cascade.
+    console.warn('[auto-tutorial] recordRunHistory failed:', err);
+    // Leave historyRecorded=true regardless — better to lose one entry than
+    // double-write if storage flakes mid-call.
   }
 }
 

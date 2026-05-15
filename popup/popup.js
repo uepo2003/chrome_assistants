@@ -1,4 +1,4 @@
-/* Auto Tutorial Skipper — popup */
+/* Quickstart Copilot — popup */
 (() => {
   'use strict';
 

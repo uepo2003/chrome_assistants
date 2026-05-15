@@ -3,7 +3,12 @@
 // Calls the Claude messages API with PLAN_SYSTEM_PROMPT. Reuses the same auth
 // + parsing primitives as ai-client.js to avoid drift.
 
-import { PLAN_SYSTEM_PROMPT, buildPlanUserMessage, localizationSuffix } from './prompts.js';
+import {
+  PLAN_SYSTEM_PROMPT,
+  buildPlanUserMessage,
+  localizationSuffix,
+  planRecipeHintForSystem,
+} from './prompts.js';
 import {
   getApiKey,
   getModel,
@@ -19,13 +24,21 @@ const MAX_STEPS = 8;
 /**
  * Generate a plan for the given goal on the current tab.
  *
- * @param {{ goal: string, url: string, title: string }} args
+ * @param {{
+ *   goal: string,
+ *   url: string,
+ *   title: string,
+ *   signal?: AbortSignal,
+ *   timeoutMs?: number,
+ *   lang?: string,
+ *   recipe?: object | null,
+ * }} args
  * @returns {Promise<
  *   | { ok: true, plan: Array<{ id: string, title: string, description: string, risk: string, expectedOutcome: string }> }
  *   | { ok: false, error: string, details?: string }
  * >}
  */
-export async function generatePlan({ goal, url, title, signal, timeoutMs, lang }) {
+export async function generatePlan({ goal, url, title, signal, timeoutMs, lang, recipe }) {
   if (typeof goal !== 'string' || goal.trim().length === 0) {
     return { ok: false, error: 'invalid_goal' };
   }
@@ -42,6 +55,11 @@ export async function generatePlan({ goal, url, title, signal, timeoutMs, lang }
   const timer = setTimeout(() => timeoutCtrl.abort(), timeout);
   const fetchSignal = anySignal(signal, timeoutCtrl.signal);
 
+  // Recipe hint is appended to BOTH the system prompt and the user message
+  // when a Recipe is supplied; when `recipe` is null/undefined the two helpers
+  // return empty strings so the byte sequence is identical to open-ended runs.
+  const recipeHint = recipe ? planRecipeHintForSystem(recipe) : '';
+
   let res;
   try {
     res = await fetch(API_URL, {
@@ -55,9 +73,9 @@ export async function generatePlan({ goal, url, title, signal, timeoutMs, lang }
       body: JSON.stringify({
         model,
         max_tokens: 1024,
-        system: PLAN_SYSTEM_PROMPT + localizationSuffix(lang),
+        system: PLAN_SYSTEM_PROMPT + recipeHint + localizationSuffix(lang),
         messages: [
-          { role: 'user', content: buildPlanUserMessage({ goal, url, title }) },
+          { role: 'user', content: buildPlanUserMessage({ goal, url, title, recipe }) },
         ],
       }),
       signal: fetchSignal,

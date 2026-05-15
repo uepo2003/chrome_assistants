@@ -26,6 +26,13 @@
 
   var STORAGE_KEY = 'at_lang';
 
+  // Dev-mode flag controlling whether missing-key warnings are emitted.
+  // Kept as a simple module-level boolean because reading from
+  // chrome.storage.local is async and t() is called synchronously during
+  // every apply(). The unpacked extension ships unminified, so leaving
+  // this on in production is acceptable noise; flip to false if needed.
+  var DEV_WARN = true;
+
   var TRANSLATIONS = {
     en: {
       // ----- shared -----
@@ -41,12 +48,12 @@
       'common.failed': 'Failed',
 
       // ----- popup -----
-      'popup.brandName': 'Browser Copilot',
-      'popup.brandSubtitle': 'Goal-driven assistant for your tab',
+      'popup.brandName': 'Quickstart Copilot',
+      'popup.brandSubtitle': 'Vibe coding setup, on autopilot',
       'popup.status.idle': 'Idle',
       'popup.status.running': 'Running',
-      'popup.openCopilot': 'Open Copilot →',
-      'popup.openCopilotAria': 'Open the goal-driven copilot side panel',
+      'popup.openCopilot': 'Open Sidepanel →',
+      'popup.openCopilotAria': 'Open Sidepanel',
       'popup.quickSkip': 'Quick skip onboarding',
       'popup.quickSkipAria': 'Quick skip onboarding without a goal',
       'popup.startLabel': 'Start',
@@ -69,7 +76,7 @@
       'popup.noTab': 'No active tab.',
 
       // ----- sidepanel -----
-      'sidepanel.title': 'Browser Copilot',
+      'sidepanel.title': 'Quickstart Copilot',
       'sidepanel.composer.label': 'Your goal',
       'sidepanel.composer.placeholder': "Tell me what you want to do on this site… e.g., 'Create a new private GitHub repo called demo'",
       'sidepanel.composer.hint': 'Runs in your current tab. You can take over anytime.',
@@ -111,7 +118,7 @@
       'offTab.switchBack': 'Switch back',
 
       // ----- options page -----
-      'options.title.brand': 'Browser Copilot',
+      'options.title.brand': 'Quickstart Copilot',
       'options.title.subtitle': 'Configure how the extension auto-progresses onboarding tutorials.',
       'options.sec.apiKey': 'Anthropic API key',
       'options.sec.apiKeyDesc': "Required to talk to Claude when the extension can't decide locally.",
@@ -161,6 +168,91 @@
       'options.speed.normal.desc': 'Balanced.',
       'options.speed.fast.title': 'Fast',
       'options.speed.fast.desc': 'Minimal animation.',
+
+      // ----- brand (new keys, complement legacy popup.brand* / sidepanel.title / options.title.brand) -----
+      'brand.name': 'Quickstart Copilot',
+      'brand.subtitle': 'Vibe coding setup, on autopilot',
+      'brand.shortBadge': 'QC',
+
+      // ----- recipe catalog -----
+      'catalog.heading': 'Which setup are you tackling today?',
+      'catalog.searchPlaceholder': 'Search recipes...',
+      'catalog.empty.noMatch': 'No recipes match your search.',
+      'catalog.matchCount': '{count} recipes',
+      'catalog.matchCount.one': '1 recipe',
+      'catalog.category.first-setup': 'First setup',
+      'catalog.category.connect': 'Connect',
+      'catalog.category.deploy': 'Deploy',
+      'catalog.category.account': 'Account',
+      'catalog.category.key-issue': 'API keys',
+      'catalog.difficulty.beginner': 'Beginner',
+      'catalog.difficulty.intermediate': 'Intermediate',
+      'catalog.difficulty.advanced': 'Advanced',
+      'catalog.estimate.minutes': '~{min} min',
+      'catalog.disabled.tooltip': 'Currently unavailable: cannot reach the target site.',
+      'catalog.openEnded.cta': 'Open-ended mode (advanced)',
+      'catalog.openEnded.back': '← Back to catalog',
+      'catalog.openEnded.headerTag': 'Open-ended mode',
+      'catalog.detail.description': 'About',
+      'catalog.detail.steps': 'Expected steps',
+      'catalog.detail.prerequisites': 'Prerequisites',
+      'catalog.detail.humanHandoff': 'Human checkpoints',
+      'catalog.detail.lastVerified': 'Last verified: {date}',
+      'catalog.detail.run': 'Run',
+      'catalog.detail.close': 'Close',
+      'catalog.preview.heading': 'Before we start',
+      'catalog.preview.willTouch': 'Will touch',
+      'catalog.preview.willNotTouch': 'Will NOT touch',
+      'catalog.preview.handoff': "You'll handle these manually",
+      'catalog.preview.tokenEstimate': 'Estimated tokens: {min}–{max}',
+      'catalog.preview.confirm': 'Run',
+      'catalog.preview.cancel': 'Cancel',
+
+      // ----- first-run wizard -----
+      'firstRun.stepCounter': 'Step {n} of {total}',
+      'firstRun.step1.title': 'Choose your language',
+      'firstRun.step1.body': 'You can change this any time from settings.',
+      'firstRun.step2.title': 'Add your Anthropic API key',
+      'firstRun.step2.body': 'Required for AI-driven steps. Stored only in your browser.',
+      'firstRun.step2.testButton': 'Test connection',
+      'firstRun.step2.skip': 'Skip — fewer recipes will be available',
+      'firstRun.step3.title': 'Try your first recipe',
+      'firstRun.step3.body': 'Pick one to run now, or browse the full catalog.',
+      'firstRun.step3.later': 'Decide later',
+      'firstRun.back': 'Back',
+      'firstRun.next': 'Next',
+      'firstRun.finish': 'Finish',
+
+      // ----- live run -----
+      'live.heading': 'Running: {title}',
+      'live.stepCount': 'Step {n} / {total}',
+      'live.lastSummary': 'Just did: {text}',
+      'live.paused.title': 'Paused — your turn',
+      'live.paused.resume': 'Resume',
+      'live.complete.title': 'Done: {title}',
+      'live.aborted.title': 'Stopped',
+      'live.aborted.body': 'You stopped the run.',
+
+      // ----- pill statuses -----
+      'pill.idle': 'Idle',
+      'pill.running': 'Running',
+      'pill.paused': 'Paused',
+      'pill.complete': 'Done',
+      'pill.error': 'Error',
+
+      // ----- errors (new) -----
+      'error.recipeUnavailable': 'This recipe is currently unavailable.',
+      'error.recipeMissingApiKey': 'Add your Anthropic API key in settings to run this recipe.',
+
+      // ----- upgrade banner (v0.3 migration) -----
+      'upgrade.banner.title': 'We redesigned things',
+      'upgrade.banner.body': 'Open-ended mode is still available from the catalog footer.',
+      'upgrade.banner.dismiss': 'Got it',
+
+      // ----- options additions -----
+      'options.sec.maintenance': 'Maintenance',
+      'options.maintenance.resetFirstRun': 'Reset first-run wizard',
+      'options.maintenance.revalidate': 'Re-check recipe catalog',
     },
 
     ja: {
@@ -177,12 +269,12 @@
       'common.failed': '失敗',
 
       // ----- popup -----
-      'popup.brandName': 'Browser Copilot',
-      'popup.brandSubtitle': 'タブ内で動くゴール駆動アシスタント',
+      'popup.brandName': 'Quickstart Copilot',
+      'popup.brandSubtitle': 'Vibe coding 用の自動セットアップ',
       'popup.status.idle': '待機中',
       'popup.status.running': '実行中',
-      'popup.openCopilot': 'Copilot を開く →',
-      'popup.openCopilotAria': 'ゴール駆動のコパイロット・サイドパネルを開く',
+      'popup.openCopilot': 'サイドパネルを開く →',
+      'popup.openCopilotAria': 'サイドパネルを開く',
       'popup.quickSkip': 'チュートリアル即スキップ',
       'popup.quickSkipAria': 'ゴール無しでオンボーディングをスキップ',
       'popup.startLabel': '開始',
@@ -205,7 +297,7 @@
       'popup.noTab': 'アクティブなタブがありません。',
 
       // ----- sidepanel -----
-      'sidepanel.title': 'Browser Copilot',
+      'sidepanel.title': 'Quickstart Copilot',
       'sidepanel.composer.label': 'ゴール',
       'sidepanel.composer.placeholder': 'やってほしい操作を入力… 例：「GitHubでdemoという名前のプライベートリポジトリを作って」',
       'sidepanel.composer.hint': '今のタブ上で動作します。いつでも手で操作を奪い返せます。',
@@ -247,7 +339,7 @@
       'offTab.switchBack': '実行中タブに戻る',
 
       // ----- options page -----
-      'options.title.brand': 'Browser Copilot',
+      'options.title.brand': 'Quickstart Copilot',
       'options.title.subtitle': 'オンボーディングを自動進行させる動作を設定します。',
       'options.sec.apiKey': 'Anthropic APIキー',
       'options.sec.apiKeyDesc': 'ローカルで判断できないときに Claude を呼ぶために必要です。',
@@ -297,6 +389,91 @@
       'options.speed.normal.desc': 'バランス重視。',
       'options.speed.fast.title': '速い',
       'options.speed.fast.desc': 'アニメ最小で最速。',
+
+      // ----- brand (new keys) -----
+      'brand.name': 'Quickstart Copilot',
+      'brand.subtitle': 'Vibe coding 用の自動セットアップ',
+      'brand.shortBadge': 'QC',
+
+      // ----- recipe catalog -----
+      'catalog.heading': '今日はどのセットアップを片付けますか?',
+      'catalog.searchPlaceholder': 'レシピを検索...',
+      'catalog.empty.noMatch': '検索に一致するレシピがありません。',
+      'catalog.matchCount': '{count} 件のレシピ',
+      'catalog.matchCount.one': '1 件のレシピ',
+      'catalog.category.first-setup': '初回セットアップ',
+      'catalog.category.connect': '連携',
+      'catalog.category.deploy': 'デプロイ',
+      'catalog.category.account': 'アカウント',
+      'catalog.category.key-issue': 'API キー発行',
+      'catalog.difficulty.beginner': '入門',
+      'catalog.difficulty.intermediate': '中級',
+      'catalog.difficulty.advanced': '上級',
+      'catalog.estimate.minutes': '~{min} 分',
+      'catalog.disabled.tooltip': '現在実行できません: 接続失敗',
+      'catalog.openEnded.cta': 'Open-ended モード（上級者向け）',
+      'catalog.openEnded.back': '← カタログに戻る',
+      'catalog.openEnded.headerTag': 'Open-ended モード',
+      'catalog.detail.description': '概要',
+      'catalog.detail.steps': '予測ステップ',
+      'catalog.detail.prerequisites': '前提条件',
+      'catalog.detail.humanHandoff': 'ユーザー介入ポイント',
+      'catalog.detail.lastVerified': '最終検証: {date}',
+      'catalog.detail.run': '実行する',
+      'catalog.detail.close': '閉じる',
+      'catalog.preview.heading': '実行前の確認',
+      'catalog.preview.willTouch': '触る範囲',
+      'catalog.preview.willNotTouch': '触らないもの',
+      'catalog.preview.handoff': '手動で行うステップ',
+      'catalog.preview.tokenEstimate': '想定トークン: {min}〜{max}',
+      'catalog.preview.confirm': '実行する',
+      'catalog.preview.cancel': 'キャンセル',
+
+      // ----- first-run wizard -----
+      'firstRun.stepCounter': 'ステップ {n} / {total}',
+      'firstRun.step1.title': '言語を選択',
+      'firstRun.step1.body': '設定からいつでも変更できます。',
+      'firstRun.step2.title': 'Anthropic API キーを登録',
+      'firstRun.step2.body': 'AI 操作に必要です。ブラウザのローカルにのみ保存されます。',
+      'firstRun.step2.testButton': '接続テスト',
+      'firstRun.step2.skip': 'キー無しで進む（使えるレシピが限られます）',
+      'firstRun.step3.title': '最初のレシピを試す',
+      'firstRun.step3.body': '1 つ選んで今すぐ実行、またはあとで決められます。',
+      'firstRun.step3.later': 'あとで決める',
+      'firstRun.back': '戻る',
+      'firstRun.next': '次へ',
+      'firstRun.finish': '完了',
+
+      // ----- live run -----
+      'live.heading': '実行中: {title}',
+      'live.stepCount': 'ステップ {n} / {total}',
+      'live.lastSummary': '直前: {text}',
+      'live.paused.title': '一時停止 — あなたの番です',
+      'live.paused.resume': '続きをやる',
+      'live.complete.title': '完了: {title}',
+      'live.aborted.title': '停止しました',
+      'live.aborted.body': '実行を停止しました。',
+
+      // ----- pill statuses -----
+      'pill.idle': '待機',
+      'pill.running': '実行中',
+      'pill.paused': '一時停止',
+      'pill.complete': '完了',
+      'pill.error': 'エラー',
+
+      // ----- errors (new) -----
+      'error.recipeUnavailable': 'このレシピは現在利用できません。',
+      'error.recipeMissingApiKey': '設定で Anthropic API キーを登録してから実行してください。',
+
+      // ----- upgrade banner (v0.3 migration) -----
+      'upgrade.banner.title': 'リデザインしました',
+      'upgrade.banner.body': 'Open-ended モードはカタログ下部から引き続き使えます。',
+      'upgrade.banner.dismiss': 'OK',
+
+      // ----- options additions -----
+      'options.sec.maintenance': 'メンテナンス',
+      'options.maintenance.resetFirstRun': '初回ウィザードをリセット',
+      'options.maintenance.revalidate': 'レシピを再検証',
     },
   };
 
@@ -327,14 +504,30 @@
   }
 
   function t(key, vars) {
-    var table = TRANSLATIONS[state.lang] || TRANSLATIONS.en;
-    var raw = table[key];
-    if (raw == null) {
-      // Fall back to English so missing JA strings don't render keys.
-      raw = TRANSLATIONS.en[key];
+    var lang = state.lang;
+    var primary = TRANSLATIONS[lang] || TRANSLATIONS.en;
+    var raw = primary[key];
+    if (raw != null) return interpolate(raw, vars);
+
+    // Missing in primary language — fall back to the *other* language.
+    // For en primary, fall back to ja. For ja (or anything else), fall
+    // back to en. Either way warn in dev mode.
+    var fallbackLang = lang === 'en' ? 'ja' : 'en';
+    var fallback = TRANSLATIONS[fallbackLang];
+    var raw2 = fallback ? fallback[key] : null;
+    if (raw2 != null) {
+      if (DEV_WARN) {
+        try { console.warn('[i18n] missing ' + lang + ': ' + key); } catch (e) {}
+      }
+      return interpolate(raw2, vars);
     }
-    if (raw == null) return key;
-    return interpolate(raw, vars);
+
+    // Both languages missing — return empty string so the key name never
+    // bleeds into the UI. apply() will blank the node, which is intended.
+    if (DEV_WARN) {
+      try { console.warn('[i18n] missing both: ' + key); } catch (e) {}
+    }
+    return '';
   }
 
   function setLang(lang) {

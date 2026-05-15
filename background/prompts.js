@@ -126,14 +126,89 @@ export const PLAN_SYSTEM_PROMPT = [
 /**
  * Build the user message for plan generation.
  *
- * @param {{ goal: string, url: string, title: string }} args
+ * @param {{ goal: string, url: string, title: string, recipe?: object | null }} args
  * @returns {string}
  */
-export function buildPlanUserMessage({ goal, url, title }) {
+export function buildPlanUserMessage({ goal, url, title, recipe }) {
   const u = truncate(String(url ?? ''), 200);
   const t = truncate(String(title ?? ''), 160);
   const g = truncate(String(goal ?? '').replace(/\s+/g, ' ').trim(), 800);
-  return `Site: ${u}\nTitle: ${t}\nGoal: ${g}\n\nReturn a JSON array of steps.`;
+  const hint = recipeHintForUser(recipe);
+  return `Site: ${u}\nTitle: ${t}\nGoal: ${g}${hint}\n\nReturn a JSON array of steps.`;
+}
+
+/**
+ * Build the planner's "Recipe hint" suffix for the SYSTEM prompt.
+ *
+ * Returns an empty string when no recipe is supplied — so the byte sequence of
+ * the system prompt for an open-ended Run is identical to the pre-Section-5
+ * behavior. The hint is intentionally natural-language (no JSON dump) so it
+ * blends into the rest of the system prompt.
+ *
+ * @param {object | null | undefined} recipe
+ * @returns {string}
+ */
+export function planRecipeHintForSystem(recipe) {
+  if (!recipe || typeof recipe !== 'object') return '';
+  const targetHost = typeof recipe.targetHost === 'string' && recipe.targetHost
+    ? recipe.targetHost
+    : null;
+  const handoffWhens = Array.isArray(recipe.humanHandoffPoints)
+    ? recipe.humanHandoffPoints
+        .map((p) => (p && typeof p.when === 'string') ? p.when : null)
+        .filter(Boolean)
+    : [];
+
+  const lines = ['', '', '=== RECIPE HINT ==='];
+  if (targetHost) {
+    lines.push(
+      `This run follows a known recipe targeting "${targetHost}". Keep all steps`,
+      'on that origin unless the user explicitly asks otherwise.',
+    );
+  } else {
+    lines.push('This run follows a known recipe.');
+  }
+  if (handoffWhens.length > 0) {
+    lines.push(
+      `The recipe expects manual handoff at: ${handoffWhens.join(', ')}.`,
+      'Do NOT plan steps that try to automate those handoff points — the',
+      'orchestrator will pause for the user there. Plan around them.',
+    );
+  }
+  lines.push(
+    'The user-message section below contains a list of EXPECTED STEPS taken',
+    'from the recipe; use them as soft guidance for shape and ordering, but',
+    'rewrite into your own concrete, observable steps for the current page.',
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Build the planner's "expected steps" suffix for the USER message.
+ *
+ * Empty string when no recipe — preserves byte-identical behavior for
+ * open-ended runs.
+ *
+ * @param {object | null | undefined} recipe
+ * @returns {string}
+ */
+function recipeHintForUser(recipe) {
+  if (!recipe || typeof recipe !== 'object') return '';
+  const expectedSteps = Array.isArray(recipe.expectedSteps)
+    ? recipe.expectedSteps.filter((s) => typeof s === 'string' && s.trim())
+    : [];
+  if (expectedSteps.length === 0) return '';
+
+  const summary = expectedSteps
+    .slice(0, 12)
+    .map((s) => `- ${truncate(s.replace(/\s+/g, ' ').trim(), 140)}`)
+    .join('\n');
+  return [
+    '',
+    '',
+    'EXPECTED STEPS (recipe hint — adapt freely to what the page actually shows):',
+    summary,
+  ].join('\n');
 }
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-/* Auto Tutorial Skipper — options page logic */
+/* Quickstart Copilot — options page logic */
 
 const KEYS = {
   API_KEY: 'at_api_key',
@@ -21,6 +21,8 @@ const TEST_TIMEOUT_MS = 30000;
 const MSG_DEV_LOG_QUERY = 'AT_DEV_LOG_QUERY';
 const MSG_DEV_LOG_CLEAR = 'AT_DEV_LOG_CLEAR';
 const MSG_DEV_LOG_PUSH = 'AT_DEV_LOG_PUSH';
+const MSG_RECIPE_HEALTH_REFRESH = 'AT_RECIPE_HEALTH_REFRESH';
+const MSG_RECIPE_HEALTH_UPDATED = 'AT_RECIPE_HEALTH_UPDATED';
 
 const VALID_MODES = new Set(['rules', 'hybrid', 'ai']);
 const VALID_SPEEDS = new Set(['slow', 'normal', 'fast']);
@@ -42,6 +44,12 @@ const autoStartCheckbox = $('auto-start');
 const cancelTestBtn = $('cancel-test');
 const testElapsed = $('test-elapsed');
 const langSelect = $('lang-select');
+
+// Maintenance section — recheck button owned here; reset-first-run button
+// markup lives here for shared styling but its click handler is owned by the
+// first-run wizard agent (sec8-firstrun) so storage logic stays in one place.
+const recheckRecipesBtn = $('recheck-recipes');
+const maintenanceToast = $('maintenance-toast');
 
 function tt(key, vars) {
   try {
@@ -115,6 +123,102 @@ function showSavedToast() {
     }, 220);
   }, 1500);
 }
+
+// ---------- Maintenance toast (re-check recipes) -----------------
+// Generic toast helper that pins to the maintenance section. Pass durationMs
+// = 0 to keep the toast visible until the next call updates it.
+function showMaintenanceToast(text, durationMs) {
+  if (!maintenanceToast) return;
+  maintenanceToast.textContent = text;
+  maintenanceToast.hidden = false;
+  void maintenanceToast.offsetWidth;
+  maintenanceToast.classList.add('show');
+  clearTimeout(showMaintenanceToast._t);
+  if (durationMs && durationMs > 0) {
+    showMaintenanceToast._t = setTimeout(() => {
+      maintenanceToast.classList.remove('show');
+      setTimeout(() => {
+        maintenanceToast.hidden = true;
+      }, 220);
+    }, durationMs);
+  }
+}
+
+// Local fallback strings for transient maintenance toast text. These keys
+// are not in common/i18n.js (which sec9 must not modify), so we keep the
+// JA/EN map inline and prefer the live i18n value if it ever lands later.
+const LOCAL_STRINGS = {
+  rechecking: { en: 'Re-checking…',   ja: '再検証中…' },
+  recheckDone:{ en: 'Done ✓',         ja: '完了 ✓' },
+  firstRunReset: { en: 'First-run wizard reset ✓', ja: '初回ウィザードをリセットしました ✓' },
+};
+function lt(localKey) {
+  try {
+    var lang = (globalThis.__AT_I18N__ && globalThis.__AT_I18N__.lang) || 'en';
+    var entry = LOCAL_STRINGS[localKey];
+    return (entry && (entry[lang] || entry.en)) || '';
+  } catch (_e) {
+    return (LOCAL_STRINGS[localKey] && LOCAL_STRINGS[localKey].en) || '';
+  }
+}
+
+let recheckInFlight = false;
+async function onRecheckRecipesClick() {
+  if (recheckInFlight) return;
+  recheckInFlight = true;
+  try {
+    if (recheckRecipesBtn) recheckRecipesBtn.disabled = true;
+    showMaintenanceToast(lt('rechecking'), 0);
+    try {
+      await chrome.runtime.sendMessage({ type: MSG_RECIPE_HEALTH_REFRESH });
+      void chrome.runtime.lastError;
+    } catch (_e) {
+      // Background asleep or no listener — let onUpdated path still fire if
+      // it wakes up, otherwise fall back to a short timeout below.
+    }
+    // Safety: if the broadcast never arrives (background asleep, no recipes
+    // loaded yet), still clear the toast after a generous window so the UI
+    // never looks stuck.
+    setTimeout(() => {
+      if (recheckInFlight) {
+        recheckInFlight = false;
+        if (recheckRecipesBtn) recheckRecipesBtn.disabled = false;
+        showMaintenanceToast(lt('recheckDone'), 1500);
+      }
+    }, 15000);
+  } catch (_e) {
+    recheckInFlight = false;
+    if (recheckRecipesBtn) recheckRecipesBtn.disabled = false;
+  }
+}
+
+function onRecipeHealthUpdated() {
+  if (!recheckInFlight) return;
+  recheckInFlight = false;
+  if (recheckRecipesBtn) recheckRecipesBtn.disabled = false;
+  showMaintenanceToast(lt('recheckDone'), 1500);
+}
+
+// ===== First-Run wizard reset (sec8-firstrun) ============================
+// Removes the completion flag + saved step so the next sidepanel open
+// shows Step 1 again. Wired up in wireEvents().
+const resetFirstRunBtn = $('reset-first-run');
+async function onResetFirstRunClick() {
+  if (!resetFirstRunBtn) return;
+  resetFirstRunBtn.disabled = true;
+  try {
+    await chrome.storage.local.remove([
+      'at_first_run_done',
+      'at_first_run_step',
+      'at_first_run_skipped_key',
+    ]);
+  } catch (_e) {}
+  showMaintenanceToast(lt('firstRunReset'), 1500);
+  setTimeout(() => {
+    if (resetFirstRunBtn) resetFirstRunBtn.disabled = false;
+  }, 250);
+}
+// =========================================================================
 
 async function loadSettings() {
   const stored = await chrome.storage.local.get([
@@ -395,6 +499,16 @@ function wireEvents() {
     }
   } catch (_e) {}
 
+  // ----- Maintenance -----
+  if (recheckRecipesBtn) {
+    recheckRecipesBtn.addEventListener('click', onRecheckRecipesClick);
+  }
+  // sec8-firstrun: wire the "Reset first-run wizard" button. Clearing the
+  // storage keys causes the wizard to re-appear on the next sidepanel open.
+  if (resetFirstRunBtn) {
+    resetFirstRunBtn.addEventListener('click', onResetFirstRunClick);
+  }
+
   // ----- Dev mode + log viewer -----
   if (devModeCheckbox) {
     devModeCheckbox.addEventListener('change', saveNonKeyOnly);
@@ -409,6 +523,8 @@ function wireEvents() {
         if (devAutoRefresh && devAutoRefresh.checked) {
           appendDevLogEntry(msg.entry);
         }
+      } else if (msg.type === MSG_RECIPE_HEALTH_UPDATED) {
+        onRecipeHealthUpdated();
       }
     });
   } catch (_e) { /* no-op */ }

@@ -1,6 +1,8 @@
-// Side Panel chat UI for Browser Copilot.
-// Wires the user's goal-driven workflow to the background SW + content script
-// via the shared __AT_MSG__ protocol.
+// Side Panel UI for Quickstart Copilot.
+// Two top-level modes coexist:
+//   data-mode="catalog"    — Recipe catalog home; classic chat appears mid-run.
+//   data-mode="open-ended" — Legacy free-form goal composer.
+// Both modes share the same Live Run shell once a run is in flight.
 
 (function () {
   "use strict";
@@ -26,32 +28,49 @@
       ABORT_PLAN: "AT_ABORT_PLAN",
     };
 
+  // Prefer the shared __AT_MSG__ table; fall back to literal strings if it
+  // hasn't been loaded yet (e.g. messages.js loaded after this script).
+  const MSG_GET_RECIPE_CATALOG =
+    (MSG && MSG.GET_RECIPE_CATALOG) || "AT_GET_RECIPE_CATALOG";
+  const MSG_RECIPE_HEALTH_UPDATED =
+    (MSG && MSG.RECIPE_HEALTH_UPDATED) || "AT_RECIPE_HEALTH_UPDATED";
+  // sec5-background ships PAUSED_FOR_HUMAN with bilingual `why` (see
+  // common/messages.js — payload: { recipeId, when, why: { en, ja } }).
+  const MSG_PAUSED_FOR_HUMAN =
+    (MSG && MSG.PAUSED_FOR_HUMAN) || "AT_PAUSED_FOR_HUMAN";
+  const MSG_RESUME = (MSG && MSG.RESUME) || "AT_RESUME";
+
+  const CATEGORIES = ["first-setup", "connect", "deploy", "account", "key-issue"];
+
   // ---------------------------------------------------------------- state ---
-  // tabId       = the tab a run is BOUND to (where goal was submitted).
-  //               During idle it tracks the visible tab; once a run starts
-  //               it stays locked until the run finishes or is cancelled.
-  // visibleTabId = the tab the user is currently looking at.
-  //               When this differs from tabId, we show a banner.
-  // visibleHost  = host of the visible tab (for display only).
   const state = {
     tabId: null,
     visibleTabId: null,
     host: "",
     visibleHost: "",
-    runState: "idle", // idle | planning | awaiting-approval | running | waiting-user | done | aborted
+    runState: "idle", // idle | planning | awaiting-approval | running | waiting-user | paused | done | aborted
     goal: "",
     plan: null,
     currentStepIndex: -1,
+    totalSteps: 0,
     nodes: {
       goalCard: null,
       planCard: null,
       planList: null,
       planActions: null,
-      thinking: null, // live "thinking…" bubble for plan/step generation
+      thinking: null,
     },
     thinkingTimer: null,
     thinkingStartedAt: 0,
     thinkingLabel: "",
+
+    // Catalog
+    catalog: [],            // recipes from SW (toRecipeSummary shape)
+    activeCategory: "all",  // "all" or one of CATEGORIES
+    searchQuery: "",
+    currentRecipe: null,    // recipe being shown in detail/preview
+    runningRecipe: null,    // recipe whose run is in progress
+    lastSummaryByStep: new Map(),
   };
 
   // ----------------------------------------------------------- dom helpers --
@@ -84,6 +103,58 @@
     empty: $("empty"),
     goalInput: $("goalInput"),
     sendBtn: $("sendBtn"),
+    composer: $("composer"),
+
+    // Catalog
+    catalog: $("catalog"),
+    catalogSearch: $("catalogSearch"),
+    catalogChips: $("catalogChips"),
+    catalogGroups: $("catalogGroups"),
+    catalogEmpty: $("catalogEmpty"),
+    catalogCount: $("catalogCount"),
+    openEndedCta: $("openEndedCta"),
+    backToCatalogBtn: $("backToCatalogBtn"),
+    openEndedTag: $("openEndedTag"),
+    recipeCardTemplate: $("recipe-card"),
+
+    // Live Run
+    liveRun: $("liveRun"),
+    livePill: $("livePill"),
+    livePillLabel: $("livePillLabel"),
+    liveHeading: $("liveHeading"),
+    liveCounter: $("liveCounter"),
+    liveSummary: $("liveSummary"),
+    liveStopBtn: $("liveStopBtn"),
+    pausedPanel: $("pausedPanel"),
+    pausedWhy: $("pausedWhy"),
+    resumeBtn: $("resumeBtn"),
+
+    // Upgrade banner
+    upgradeBanner: $("upgradeBanner"),
+    upgradeBannerDismiss: $("upgradeBannerDismiss"),
+
+    // Modals
+    detailModal: $("recipeDetailModal"),
+    detailTitle: $("recipeDetailTitle"),
+    detailDesc: $("recipeDetailDesc"),
+    detailVerified: $("recipeDetailVerified"),
+    detailSteps: $("recipeDetailSteps"),
+    detailStepsSection: $("recipeDetailStepsSection"),
+    detailPrereq: $("recipeDetailPrereq"),
+    detailPrereqSection: $("recipeDetailPrereqSection"),
+    detailHandoff: $("recipeDetailHandoff"),
+    detailHandoffSection: $("recipeDetailHandoffSection"),
+    detailRunBtn: $("recipeDetailRunBtn"),
+
+    previewModal: $("recipePreviewModal"),
+    previewTouch: $("recipePreviewTouch"),
+    previewTouchSection: $("recipePreviewTouchSection"),
+    previewNot: $("recipePreviewNot"),
+    previewNotSection: $("recipePreviewNotSection"),
+    previewHandoff: $("recipePreviewHandoff"),
+    previewHandoffSection: $("recipePreviewHandoffSection"),
+    previewTokens: $("recipePreviewTokens"),
+    previewConfirmBtn: $("recipePreviewConfirmBtn"),
   };
 
   // ------------------------------------------------------ i18n (translate) -
@@ -94,13 +165,25 @@
       return key;
     }
   }
+  function currentLang() {
+    try {
+      return (globalThis.__AT_I18N__ && globalThis.__AT_I18N__.lang) || "en";
+    } catch (_e) {
+      return "en";
+    }
+  }
+  function bi(text) {
+    if (!text) return "";
+    if (typeof text === "string") return text;
+    const lang = currentLang();
+    return text[lang] || text.en || text.ja || "";
+  }
 
   // ---------------------------------------------------------------- send ----
   function send(type, payload) {
     try {
       const msg = Object.assign({ type, tabId: state.tabId }, payload || {});
       chrome.runtime.sendMessage(msg, () => {
-        // Soft-fail: background may be absent during reload.
         void chrome.runtime.lastError;
       });
     } catch (_e) {
@@ -116,16 +199,69 @@
     dom.statusDot.setAttribute("aria-label", `Status: ${s}`);
     dom.statusDot.title = s;
 
-    const showStop = s === "running" || s === "waiting-user";
-    dom.stopBtn.hidden = !showStop;
+    const showStop = s === "running" || s === "waiting-user" || s === "paused";
+    if (dom.stopBtn) dom.stopBtn.hidden = !showStop;
 
     const disableInput =
       s === "planning" ||
       s === "awaiting-approval" ||
       s === "running" ||
-      s === "waiting-user";
-    dom.goalInput.disabled = disableInput;
-    dom.sendBtn.disabled = disableInput || !dom.goalInput.value.trim();
+      s === "waiting-user" ||
+      s === "paused";
+    if (dom.goalInput) dom.goalInput.disabled = disableInput;
+    if (dom.sendBtn) {
+      dom.sendBtn.disabled =
+        disableInput || !(dom.goalInput && dom.goalInput.value.trim());
+    }
+
+    // Live Run visibility + pill state.
+    const isLive = s !== "idle";
+    if (dom.liveRun) dom.liveRun.hidden = !isLive;
+    updateLivePill(s);
+
+    if (s === "idle") {
+      // Returning to home — reset run-specific UI.
+      state.runningRecipe = null;
+      state.currentStepIndex = -1;
+      state.totalSteps = 0;
+      state.lastSummaryByStep.clear();
+      if (dom.liveCounter) dom.liveCounter.textContent = "";
+      if (dom.liveSummary) dom.liveSummary.textContent = "";
+      if (dom.liveHeading) dom.liveHeading.textContent = "—";
+    }
+  }
+
+  function updateLivePill(s) {
+    if (!dom.livePill || !dom.livePillLabel) return;
+    let pillState = "idle";
+    let pillKey = "pill.idle";
+    if (s === "planning" || s === "awaiting-approval" || s === "running") {
+      pillState = "running"; pillKey = "pill.running";
+    } else if (s === "waiting-user" || s === "paused") {
+      pillState = "paused"; pillKey = "pill.paused";
+    } else if (s === "done") {
+      pillState = "complete"; pillKey = "pill.complete";
+    } else if (s === "aborted") {
+      pillState = "error"; pillKey = "pill.error";
+    }
+    try {
+      if (globalThis.__QC_UI__ && globalThis.__QC_UI__.pill) {
+        globalThis.__QC_UI__.pill.setState(dom.livePill, pillState);
+      } else {
+        dom.livePill.setAttribute("data-state", pillState);
+      }
+    } catch (_e) {}
+    dom.livePillLabel.textContent = tr(pillKey);
+  }
+
+  function updateLiveCounter() {
+    if (!dom.liveCounter) return;
+    if (state.totalSteps > 0 && state.currentStepIndex >= 0) {
+      const n = Math.min(state.currentStepIndex + 1, state.totalSteps);
+      dom.liveCounter.textContent = tr("live.stepCount", { n, total: state.totalSteps });
+    } else {
+      dom.liveCounter.textContent = "";
+    }
   }
 
   function clearChat({ keepGoal = false } = {}) {
@@ -133,7 +269,7 @@
       clearInterval(state.thinkingTimer);
       state.thinkingTimer = null;
     }
-    dom.chat.innerHTML = "";
+    if (dom.chat) dom.chat.innerHTML = "";
     state.nodes.goalCard = null;
     state.nodes.planCard = null;
     state.nodes.planList = null;
@@ -141,17 +277,22 @@
     state.nodes.thinking = null;
     state.plan = null;
     state.currentStepIndex = -1;
+    state.totalSteps = 0;
     if (!keepGoal) state.goal = "";
-    dom.chat.appendChild(dom.empty);
-    dom.empty.hidden = false;
+    if (dom.empty && dom.chat && dom.app.dataset.mode === "open-ended") {
+      dom.chat.appendChild(dom.empty);
+      dom.empty.hidden = false;
+    }
   }
 
   function hideEmpty() {
-    if (dom.empty.parentNode === dom.chat) dom.chat.removeChild(dom.empty);
+    if (dom.empty && dom.empty.parentNode === dom.chat) {
+      dom.empty.hidden = true;
+    }
   }
 
   function scrollChatToEnd() {
-    dom.chat.scrollTop = dom.chat.scrollHeight;
+    if (dom.chat) dom.chat.scrollTop = dom.chat.scrollHeight;
   }
 
   // ------------------------------------------------------- entry renderers --
@@ -188,16 +329,6 @@
         text: isError ? "!" : "AT",
       }),
       body,
-    ]);
-    dom.chat.appendChild(entry);
-    scrollChatToEnd();
-    return entry;
-  }
-
-  function appendUser(text) {
-    hideEmpty();
-    const entry = el("div", { className: "entry entry--user" }, [
-      el("div", { className: "bubble", text }),
     ]);
     dom.chat.appendChild(entry);
     scrollChatToEnd();
@@ -253,12 +384,12 @@
 
   function renderPlanCard(plan) {
     hideEmpty();
-    // The background sends `plan` as a bare array of steps. Older code path
-    // also supported `{steps: [...]}` so we accept both.
     const steps = Array.isArray(plan)
       ? plan
       : (Array.isArray(plan && plan.steps) ? plan.steps : []);
     state.plan = steps;
+    state.totalSteps = steps.length;
+    updateLiveCounter();
 
     const headerKey = steps.length === 1 ? "sidepanel.planHeader.one" : "sidepanel.planHeader";
     const title = el("h3", {
@@ -334,8 +465,7 @@
         }
       } else row.classList.add("step--future");
     });
-    // Mark all completed steps with check.
-    rows.forEach((row, i) => {
+    rows.forEach((row) => {
       if (row.classList.contains("step--done")) {
         const idx = row.querySelector(".step__index");
         if (idx) idx.textContent = "✓";
@@ -409,11 +539,7 @@
     send(MSG.USER_REPLY, { askId, reply });
     card.classList.add("ask--answered");
     card.innerHTML = "";
-    card.appendChild(
-      el("div", {
-        text: `Q: ${question} → A: ${reply}`,
-      })
-    );
+    card.appendChild(el("div", { text: `Q: ${question} → A: ${reply}` }));
     setRunState("running");
   }
 
@@ -433,12 +559,8 @@
       attrs: { type: "button" },
     });
 
-    approveBtn.addEventListener("click", () =>
-      respondConfirm(askId, true, card)
-    );
-    skipBtn.addEventListener("click", () =>
-      respondConfirm(askId, false, card)
-    );
+    approveBtn.addEventListener("click", () => respondConfirm(askId, true, card));
+    skipBtn.addEventListener("click", () => respondConfirm(askId, false, card));
 
     const card = el("div", { className: "card confirm" }, [
       el("p", { className: "confirm__title", text: what || "Confirm action" }),
@@ -461,17 +583,433 @@
     send(MSG.CONFIRM_RESPONSE, { askId, approve });
     card.classList.add("ask--answered");
     card.innerHTML = "";
-    card.appendChild(
-      el("div", { text: approve ? "✓ Approved" : "↷ Skipped" })
-    );
+    card.appendChild(el("div", { text: approve ? "✓ Approved" : "↷ Skipped" }));
     setRunState("running");
   }
 
-  // ----------------------------------------------------------- handlers -----
+  // ============================================================ catalog =====
+
+  function loadCatalog() {
+    try {
+      chrome.runtime.sendMessage(
+        { type: MSG_GET_RECIPE_CATALOG },
+        (resp) => {
+          void chrome.runtime.lastError;
+          if (resp && resp.ok && Array.isArray(resp.recipes)) {
+            state.catalog = resp.recipes;
+            renderCatalog();
+          } else {
+            state.catalog = [];
+            renderCatalog();
+          }
+        }
+      );
+    } catch (_e) {
+      state.catalog = [];
+      renderCatalog();
+    }
+  }
+
+  function renderChips() {
+    if (!dom.catalogChips) return;
+    dom.catalogChips.innerHTML = "";
+
+    const allChip = el("button", {
+      className: "catalog__chip",
+      text: "All",
+      attrs: {
+        type: "button",
+        role: "tab",
+        "data-cat": "all",
+        "aria-pressed": state.activeCategory === "all" ? "true" : "false",
+      },
+      on: { click: () => setCategory("all") },
+    });
+    dom.catalogChips.appendChild(allChip);
+
+    CATEGORIES.forEach((cat) => {
+      const chip = el("button", {
+        className: "catalog__chip",
+        text: tr(`catalog.category.${cat}`),
+        attrs: {
+          type: "button",
+          role: "tab",
+          "data-cat": cat,
+          "aria-pressed": state.activeCategory === cat ? "true" : "false",
+        },
+        on: { click: () => setCategory(cat) },
+      });
+      dom.catalogChips.appendChild(chip);
+    });
+  }
+
+  function setCategory(cat) {
+    if (state.activeCategory === cat) return;
+    state.activeCategory = cat;
+    dom.catalogChips.querySelectorAll(".catalog__chip").forEach((c) => {
+      c.setAttribute(
+        "aria-pressed",
+        c.getAttribute("data-cat") === cat ? "true" : "false"
+      );
+    });
+    renderCatalog();
+  }
+
+  function filterRecipes() {
+    const q = (state.searchQuery || "").trim().toLowerCase();
+    const cat = state.activeCategory;
+    return state.catalog.filter((r) => {
+      if (cat !== "all" && r.category !== cat) return false;
+      if (!q) return true;
+      const title = bi(r.title).toLowerCase();
+      const desc = bi(r.description).toLowerCase();
+      const host = (r.targetHost || "").toLowerCase();
+      return title.includes(q) || desc.includes(q) || host.includes(q);
+    });
+  }
+
+  function firstSentence(s) {
+    if (!s) return "";
+    const m = String(s).match(/^[\s\S]*?[.。!?！？](\s|$)/);
+    return m ? m[0].trim() : String(s);
+  }
+
+  function makeBadge(targetHost) {
+    if (!targetHost) return "QC";
+    const cleaned = targetHost.replace(/^\*\./, "").replace(/^https?:\/\//, "");
+    return cleaned.slice(0, 2).toUpperCase();
+  }
+
+  function buildRecipeCard(recipe) {
+    const tpl = dom.recipeCardTemplate;
+    let card;
+    if (tpl && tpl.content && tpl.content.firstElementChild) {
+      card = tpl.content.firstElementChild.cloneNode(true);
+    } else {
+      card = el("article", {
+        className: "recipe-card qc-card qc-card--interactive",
+        attrs: { role: "button", tabindex: "0" },
+      }, [
+        el("header", { className: "recipe-card__head" }, [
+          el("span", { className: "recipe-card__badge", attrs: { "aria-hidden": "true" } }),
+          el("span", { className: "recipe-card__difficulty" }),
+        ]),
+        el("h3", { className: "recipe-card__title" }),
+        el("p", { className: "recipe-card__desc" }),
+        el("footer", { className: "recipe-card__foot" }, [
+          el("span", { className: "recipe-card__estimate" }),
+          el("button", {
+            className: "qc-btn qc-btn--primary qc-btn--sm recipe-card__run",
+            attrs: { type: "button" },
+          }),
+        ]),
+      ]);
+    }
+    const title = bi(recipe.title) || recipe.id;
+    const desc = firstSentence(bi(recipe.description));
+    const minutes = Math.max(1, Math.round((recipe.estimatedSeconds || 60) / 60));
+
+    const badgeEl = card.querySelector(".recipe-card__badge");
+    if (badgeEl) badgeEl.textContent = makeBadge(recipe.targetHost);
+
+    const diffEl = card.querySelector(".recipe-card__difficulty");
+    if (diffEl) {
+      diffEl.setAttribute("data-difficulty", recipe.difficulty || "");
+      diffEl.textContent = tr(`catalog.difficulty.${recipe.difficulty}`);
+    }
+
+    const titleEl = card.querySelector(".recipe-card__title");
+    if (titleEl) titleEl.textContent = title;
+
+    const descEl = card.querySelector(".recipe-card__desc");
+    if (descEl) descEl.textContent = desc;
+
+    const estEl = card.querySelector(".recipe-card__estimate");
+    if (estEl) estEl.textContent = tr("catalog.estimate.minutes", { min: minutes });
+
+    const runBtn = card.querySelector(".recipe-card__run");
+    if (runBtn) runBtn.textContent = tr("catalog.detail.run");
+
+    card.setAttribute("aria-label", `${title} — ${desc}`);
+    card.setAttribute("data-recipe-id", recipe.id);
+
+    if (recipe.disabled) {
+      card.setAttribute("data-disabled", "true");
+      card.setAttribute("title", tr("catalog.disabled.tooltip"));
+      card.setAttribute("aria-disabled", "true");
+      if (runBtn) {
+        runBtn.disabled = true;
+        runBtn.setAttribute("aria-disabled", "true");
+      }
+    }
+
+    // Card body click → detail. Run button → preview directly.
+    card.addEventListener("click", (ev) => {
+      if (ev.target && ev.target.closest && ev.target.closest(".recipe-card__run")) {
+        return;
+      }
+      if (card.getAttribute("data-disabled") === "true") return;
+      openRecipeDetail(recipe);
+    });
+    card.addEventListener("keydown", (ev) => {
+      if (card.getAttribute("data-disabled") === "true") return;
+      if (ev.key === "Enter" || ev.key === " ") {
+        if (ev.target && ev.target.closest && ev.target.closest(".recipe-card__run")) return;
+        ev.preventDefault();
+        openRecipeDetail(recipe);
+      }
+    });
+    if (runBtn) {
+      runBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (card.getAttribute("data-disabled") === "true") return;
+        openRecipePreview(recipe);
+      });
+    }
+
+    return card;
+  }
+
+  function renderCatalog() {
+    if (!dom.catalogGroups) return;
+    dom.catalogGroups.innerHTML = "";
+
+    const filtered = filterRecipes();
+    const total = filtered.length;
+
+    if (dom.catalogCount) {
+      dom.catalogCount.textContent = total === 1
+        ? tr("catalog.matchCount.one")
+        : tr("catalog.matchCount", { count: total });
+    }
+
+    if (total === 0) {
+      if (dom.catalogEmpty) dom.catalogEmpty.hidden = false;
+      return;
+    }
+    if (dom.catalogEmpty) dom.catalogEmpty.hidden = true;
+
+    const byCat = new Map();
+    filtered.forEach((r) => {
+      const arr = byCat.get(r.category) || [];
+      arr.push(r);
+      byCat.set(r.category, arr);
+    });
+
+    const order = [...CATEGORIES, ...[...byCat.keys()].filter((c) => !CATEGORIES.includes(c))];
+
+    for (const cat of order) {
+      const recipes = byCat.get(cat);
+      if (!recipes || recipes.length === 0) continue;
+      const groupHead = el("h3", {
+        className: "catalog__group-heading",
+        text: tr(`catalog.category.${cat}`),
+      });
+      const grid = el("div", { className: "catalog__grid" });
+      recipes.forEach((r) => grid.appendChild(buildRecipeCard(r)));
+      const group = el("section", { className: "catalog__group" }, [groupHead, grid]);
+      dom.catalogGroups.appendChild(group);
+    }
+  }
+
+  // -------- Recipe detail modal --------------------------------------------
+  function openRecipeDetail(recipe) {
+    state.currentRecipe = recipe;
+    if (!dom.detailModal) return;
+
+    if (dom.detailTitle) dom.detailTitle.textContent = bi(recipe.title);
+    if (dom.detailDesc) dom.detailDesc.textContent = bi(recipe.description);
+
+    if (dom.detailVerified) {
+      if (recipe.lastVerifiedAt) {
+        dom.detailVerified.textContent = tr("catalog.detail.lastVerified", { date: recipe.lastVerifiedAt });
+        dom.detailVerified.hidden = false;
+      } else {
+        dom.detailVerified.textContent = "";
+        dom.detailVerified.hidden = true;
+      }
+    }
+
+    if (dom.detailSteps && dom.detailStepsSection) {
+      dom.detailSteps.innerHTML = "";
+      const steps = recipe.expectedSteps || [];
+      if (steps.length === 0) {
+        dom.detailStepsSection.hidden = true;
+      } else {
+        dom.detailStepsSection.hidden = false;
+        steps.forEach((s) => {
+          dom.detailSteps.appendChild(el("li", { text: typeof s === "string" ? s : bi(s) }));
+        });
+      }
+    }
+
+    if (dom.detailPrereq && dom.detailPrereqSection) {
+      dom.detailPrereq.innerHTML = "";
+      const prereq = recipe.prerequisites || [];
+      if (prereq.length === 0) {
+        dom.detailPrereqSection.hidden = true;
+      } else {
+        dom.detailPrereqSection.hidden = false;
+        prereq.forEach((p) => {
+          dom.detailPrereq.appendChild(el("li", { text: typeof p === "string" ? p : bi(p) }));
+        });
+      }
+    }
+
+    if (dom.detailHandoff && dom.detailHandoffSection) {
+      dom.detailHandoff.innerHTML = "";
+      const handoff = recipe.humanHandoffPoints || [];
+      if (handoff.length === 0) {
+        dom.detailHandoffSection.hidden = true;
+      } else {
+        dom.detailHandoffSection.hidden = false;
+        handoff.forEach((hp) => {
+          dom.detailHandoff.appendChild(el("li", { text: bi(hp && hp.why) }));
+        });
+      }
+    }
+
+    if (dom.detailRunBtn) {
+      dom.detailRunBtn.disabled = !!recipe.disabled;
+      dom.detailRunBtn.setAttribute("aria-disabled", recipe.disabled ? "true" : "false");
+    }
+
+    try {
+      dom.detailModal.removeAttribute("hidden");
+      globalThis.__QC_UI__.modal.open(dom.detailModal);
+    } catch (_e) {}
+  }
+
+  function closeRecipeDetail() {
+    try { globalThis.__QC_UI__.modal.close(dom.detailModal); } catch (_e) {}
+  }
+
+  // -------- Recipe preview modal -------------------------------------------
+  function openRecipePreview(recipe) {
+    state.currentRecipe = recipe;
+    if (!dom.previewModal) return;
+
+    const fillList = (listEl, sectionEl, items) => {
+      if (!listEl || !sectionEl) return;
+      listEl.innerHTML = "";
+      if (!items || items.length === 0) {
+        sectionEl.hidden = true;
+        return;
+      }
+      sectionEl.hidden = false;
+      items.forEach((s) => {
+        listEl.appendChild(el("li", { text: typeof s === "string" ? s : bi(s) }));
+      });
+    };
+
+    fillList(dom.previewTouch, dom.previewTouchSection, recipe.willTouch || []);
+    fillList(dom.previewNot, dom.previewNotSection, recipe.willNotTouch || []);
+    const handoffWhy = (recipe.humanHandoffPoints || []).map((hp) => bi(hp && hp.why));
+    fillList(dom.previewHandoff, dom.previewHandoffSection, handoffWhy);
+
+    if (dom.previewTokens) {
+      if (recipe.tokenEstimate && typeof recipe.tokenEstimate.min === "number") {
+        dom.previewTokens.textContent = tr("catalog.preview.tokenEstimate", {
+          min: recipe.tokenEstimate.min,
+          max: recipe.tokenEstimate.max,
+        });
+        dom.previewTokens.hidden = false;
+      } else {
+        dom.previewTokens.textContent = "";
+        dom.previewTokens.hidden = true;
+      }
+    }
+
+    if (dom.previewConfirmBtn) {
+      dom.previewConfirmBtn.disabled = !!recipe.disabled;
+      dom.previewConfirmBtn.setAttribute("aria-disabled", recipe.disabled ? "true" : "false");
+    }
+
+    try {
+      dom.previewModal.removeAttribute("hidden");
+      globalThis.__QC_UI__.modal.open(dom.previewModal);
+    } catch (_e) {}
+  }
+
+  function closeRecipePreview() {
+    try { globalThis.__QC_UI__.modal.close(dom.previewModal); } catch (_e) {}
+  }
+
+  // -------- runRecipe flow -------------------------------------------------
+  function runRecipe(recipe) {
+    if (!recipe || recipe.disabled) return;
+    if (!state.tabId) return;
+    state.runningRecipe = recipe;
+    state.goal = bi(recipe.title);
+    state.totalSteps = recipe.estimatedSteps || 0;
+    state.currentStepIndex = -1;
+    state.lastSummaryByStep.clear();
+
+    if (dom.liveHeading) {
+      dom.liveHeading.textContent = tr("live.heading", { title: bi(recipe.title) });
+    }
+    if (dom.liveSummary) dom.liveSummary.textContent = "";
+    updateLiveCounter();
+
+    clearChat();
+    renderGoalCard(bi(recipe.title));
+    showThinking(tr("system.draftingPlan"), "plan");
+    setRunState("planning");
+
+    // Send GOAL_SUBMIT with recipeId — sec5-background reads recipeId here.
+    send(MSG.GOAL_SUBMIT, {
+      goal: bi(recipe.title),
+      recipeId: recipe.id,
+    });
+  }
+
+  // -------- Open-ended toggle ----------------------------------------------
+  function showCatalog() {
+    dom.app.dataset.mode = "catalog";
+    if (dom.backToCatalogBtn) dom.backToCatalogBtn.hidden = true;
+    if (dom.openEndedTag) dom.openEndedTag.hidden = true;
+  }
+  function showOpenEnded() {
+    dom.app.dataset.mode = "open-ended";
+    if (dom.backToCatalogBtn) dom.backToCatalogBtn.hidden = false;
+    if (dom.openEndedTag) dom.openEndedTag.hidden = false;
+    if (dom.empty && state.runState === "idle") {
+      dom.chat.appendChild(dom.empty);
+      dom.empty.hidden = false;
+    }
+  }
+
+  // ============================================================ upgrade =====
+  function maybeShowUpgradeBanner() {
+    try {
+      chrome.storage.local.get("at_v03_upgrade_seen", (out) => {
+        void chrome.runtime.lastError;
+        const seen = out && out.at_v03_upgrade_seen;
+        if (!seen && dom.upgradeBanner) {
+          dom.upgradeBanner.hidden = false;
+        }
+      });
+    } catch (_e) {}
+  }
+  function dismissUpgradeBanner() {
+    try {
+      chrome.storage.local.set({ at_v03_upgrade_seen: true }, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch (_e) {}
+    if (dom.upgradeBanner) dom.upgradeBanner.hidden = true;
+  }
+
+  // ============================================================ handlers ====
   function onSendGoal() {
+    if (!dom.goalInput) return;
     const goal = dom.goalInput.value.trim();
     if (!goal || !state.tabId) return;
     state.goal = goal;
+    state.runningRecipe = null;
+    state.totalSteps = 0;
+    state.currentStepIndex = -1;
+    if (dom.liveHeading) dom.liveHeading.textContent = goal;
     clearChat();
     renderGoalCard(goal);
     showThinking(tr("system.draftingPlan"), "plan");
@@ -482,7 +1020,7 @@
 
   // ----- Thinking indicator (live elapsed-time + cancel) ------------------
   function showThinking(label, kind) {
-    hideThinking(); // ensure only one
+    hideThinking();
     state.thinkingStartedAt = Date.now();
     state.thinkingLabel = label;
 
@@ -512,7 +1050,6 @@
       if (!state.nodes.thinking) return;
       const elapsed = Date.now() - state.thinkingStartedAt;
       timeSpan.textContent = formatElapsed(elapsed);
-      // Soft escalation if it's taking long.
       if (elapsed > 25000 && !bubble.classList.contains("is-slow")) {
         bubble.classList.add("is-slow");
         labelSpan.textContent = tr("system.draftingSlow");
@@ -552,7 +1089,6 @@
       appendSystem(tr("system.planCancelled"));
       setRunState("idle");
     } else {
-      // Step AI cancel — currently best-effort; surface as user-stop.
       send(MSG.USER_STOP, {});
       hideThinking();
     }
@@ -574,7 +1110,6 @@
 
   function onCancelPlan() {
     hideThinking();
-    // If a plan is still being drafted, ask background to abort the in-flight fetch.
     if (state.runState === "planning") send(MSG.ABORT_PLAN, {});
     send(MSG.PLAN_CANCELLED, {});
     if (state.nodes.planCard) state.nodes.planCard.remove();
@@ -591,23 +1126,27 @@
     appendSystem(tr("system.stopRequested"));
   }
 
+  function onResume() {
+    send(MSG_RESUME, {});
+    if (dom.pausedPanel) dom.pausedPanel.hidden = true;
+    setRunState("running");
+  }
+
   function onEditGoal() {
     send(MSG.PLAN_CANCELLED, {});
     clearChat();
     appendSystem(tr("system.restarted"));
     setRunState("idle");
-    dom.goalInput.value = state.goal || "";
-    dom.goalInput.focus();
+    if (dom.goalInput) {
+      dom.goalInput.value = state.goal || "";
+      dom.goalInput.focus();
+    }
   }
 
-  // ------------------------------------------------------ runtime listener --
-  // Defensive dedup: if the same protocol message is delivered twice within
-  // a short window (e.g., stale extension reload state, or the SW echoes
-  // a content message it shouldn't), drop the second.
-  const recentSigs = new Map(); // sig -> ts
+  // ============================================================ runtime =====
+  const recentSigs = new Map();
   const DEDUP_WINDOW_MS = 1500;
   function isDuplicate(msg) {
-    // We only dedup chat-rendering messages — never state-machine signals.
     if (
       msg.type !== MSG.STEP_PROGRESS &&
       msg.type !== MSG.STEP_DONE &&
@@ -634,7 +1173,6 @@
       return true;
     }
     recentSigs.set(sig, now);
-    // GC: drop entries older than the window.
     if (recentSigs.size > 32) {
       for (const [k, t] of recentSigs) {
         if (now - t > DEDUP_WINDOW_MS) recentSigs.delete(k);
@@ -645,9 +1183,11 @@
 
   function onRuntimeMessage(msg) {
     if (!msg || typeof msg !== "object") return;
-    // Most run-time messages carry tabId; ignore those for other tabs.
-    if (msg.tabId != null && state.tabId != null && msg.tabId !== state.tabId)
+    if (msg.type === MSG_RECIPE_HEALTH_UPDATED) {
+      loadCatalog();
       return;
+    }
+    if (msg.tabId != null && state.tabId != null && msg.tabId !== state.tabId) return;
     if (isDuplicate(msg)) return;
 
     switch (msg.type) {
@@ -665,12 +1205,10 @@
             if (!state.nodes.thinking) {
               showThinking(label, "step");
             } else {
-              // Update label and elapsed in-place
               updateThinkingFromProgress({ elapsedMs: elapsed, label });
             }
           }
         } else {
-          // Plan progress: same locally-derived labels.
           if (elapsed < 0) {
             hideThinking();
           } else {
@@ -691,7 +1229,6 @@
         break;
       case MSG.PLAN_ERROR: {
         hideThinking();
-        const detail = msg.details ? ` (${msg.details})` : "";
         appendSystem(
           msg.details
             ? tr("system.planErrorDetails", { error: msg.error || "unknown error", details: msg.details })
@@ -705,36 +1242,49 @@
         appendSystem(tr("system.runStarted"));
         break;
       case MSG.STEP_PROGRESS: {
-        const idx =
-          typeof msg.stepIndex === "number" ? msg.stepIndex : state.currentStepIndex;
+        const idx = typeof msg.stepIndex === "number" ? msg.stepIndex : state.currentStepIndex;
         if (idx !== state.currentStepIndex && idx >= 0) {
           state.currentStepIndex = idx;
           updatePlanStep(idx, "current");
+          updateLiveCounter();
           appendSystem(tr("system.stepStarted", { n: idx + 1 }));
         }
         if (msg.narration) {
-          // A real action narration supersedes any "Asking Claude…" indicator.
           hideThinking();
           appendAgent(msg.narration, msg.action, msg.detail);
+          if (dom.liveSummary) {
+            dom.liveSummary.textContent = tr("live.lastSummary", { text: msg.narration });
+          }
         }
         break;
       }
       case MSG.STEP_DONE: {
-        const idx =
-          typeof msg.stepIndex === "number" ? msg.stepIndex : state.currentStepIndex;
+        const idx = typeof msg.stepIndex === "number" ? msg.stepIndex : state.currentStepIndex;
         updatePlanStep(idx, "done");
         const tag = msg.success === false ? "✗" : "✓";
-        appendSystem(
-          `${tag} Step ${idx + 1}${msg.summary ? `: ${msg.summary}` : ""}`
-        );
+        appendSystem(`${tag} Step ${idx + 1}${msg.summary ? `: ${msg.summary}` : ""}`);
+        if (msg.summary && dom.liveSummary) {
+          dom.liveSummary.textContent = tr("live.lastSummary", { text: msg.summary });
+          state.lastSummaryByStep.set(idx, msg.summary);
+        }
         break;
       }
       case MSG.RUN_COMPLETE:
         appendSystem(tr("system.runComplete") + (msg.summary ? `: ${msg.summary}` : ""));
+        if (dom.liveSummary && msg.summary) {
+          dom.liveSummary.textContent = tr("live.lastSummary", { text: msg.summary });
+        }
+        if (state.runningRecipe && dom.liveHeading) {
+          dom.liveHeading.textContent = tr("live.complete.title", {
+            title: bi(state.runningRecipe.title),
+          });
+        }
         setRunState("done");
         break;
       case MSG.RUN_ABORTED:
         appendSystem(tr("system.runAborted", { reason: msg.reason || "" }));
+        if (dom.liveHeading) dom.liveHeading.textContent = tr("live.aborted.title");
+        if (dom.liveSummary) dom.liveSummary.textContent = tr("live.aborted.body");
         setRunState("aborted");
         break;
       case MSG.ASK_USER:
@@ -754,19 +1304,24 @@
         });
         setRunState("waiting-user");
         break;
+      case MSG_PAUSED_FOR_HUMAN: {
+        // Payload from content (via sec5): { recipeId, when, why: {en, ja} }
+        const whyText = bi(msg && msg.why) || (msg && msg.reason) || "";
+        if (dom.pausedPanel) dom.pausedPanel.hidden = false;
+        if (dom.pausedWhy) dom.pausedWhy.textContent = whyText;
+        setRunState("paused");
+        appendSystem(whyText || tr("live.paused.title"));
+        break;
+      }
       default:
         break;
     }
   }
 
-  // -------------------------------------------------------------- tabs ------
+  // ============================================================ tabs ========
   function hostFromUrl(url) {
     if (!url) return "";
-    try {
-      return new URL(url).host || "";
-    } catch (_e) {
-      return "";
-    }
+    try { return new URL(url).host || ""; } catch (_e) { return ""; }
   }
 
   function setActiveTab(tab) {
@@ -780,7 +1335,6 @@
       state.runState !== "aborted";
 
     if (state.tabId == null || !runActive) {
-      // No active run — follow the user into the new tab.
       const prevTab = state.tabId;
       state.tabId = tab.id;
       state.host = state.visibleHost;
@@ -794,8 +1348,6 @@
       return;
     }
 
-    // A run is in progress on state.tabId. Don't disturb the chat.
-    // Update the top-bar host to the BOUND tab so the user knows where it's running.
     dom.host.textContent = state.host || "tab";
     if (state.visibleTabId !== state.tabId) {
       showOffTabBanner();
@@ -804,8 +1356,7 @@
     }
   }
 
-  // ----- Off-tab banner: shown when the user navigates away from the
-  // ----- bound tab while a run is in progress. -----------------------------
+  // off-tab banner ---------------------------------------------------------
   function showOffTabBanner() {
     if (!dom.app) return;
     let banner = document.getElementById("offTabBanner");
@@ -813,6 +1364,11 @@
       banner = document.createElement("div");
       banner.id = "offTabBanner";
       banner.className = "off-tab-banner";
+      // a11y (Section 11.2): off-tab is an interruption — the run is happening
+      // on a different tab than the one the user is looking at, and they may
+      // need to act. role=alert + aria-live=assertive announce on appear.
+      banner.setAttribute("role", "alert");
+      banner.setAttribute("aria-live", "assertive");
       const msg = document.createElement("span");
       msg.className = "off-tab-banner__msg";
       banner.appendChild(msg);
@@ -821,8 +1377,7 @@
       btn.className = "off-tab-banner__btn";
       btn.addEventListener("click", switchBackToBoundTab);
       banner.appendChild(btn);
-      // Insert directly under the top bar.
-      const topBar = dom.app.querySelector(".top-bar") || dom.app.firstChild;
+      const topBar = dom.app.querySelector(".topbar") || dom.app.firstChild;
       if (topBar && topBar.nextSibling) {
         dom.app.insertBefore(banner, topBar.nextSibling);
       } else {
@@ -851,9 +1406,7 @@
       chrome.tabs.update(state.tabId, { active: true }, () => {
         void chrome.runtime.lastError;
       });
-    } catch (_e) {
-      /* no-op */
-    }
+    } catch (_e) {}
   }
 
   function refreshActiveTab() {
@@ -862,9 +1415,7 @@
         if (chrome.runtime.lastError) return;
         if (tabs && tabs[0]) setActiveTab(tabs[0]);
       });
-    } catch (_e) {
-      /* noop */
-    }
+    } catch (_e) {}
   }
 
   function onTabActivated(info) {
@@ -873,9 +1424,7 @@
         if (chrome.runtime.lastError) return;
         setActiveTab(tab);
       });
-    } catch (_e) {
-      /* noop */
-    }
+    } catch (_e) {}
   }
 
   function onTabUpdated(tabId, _changeInfo, tab) {
@@ -887,35 +1436,79 @@
     }
   }
 
-  // -------------------------------------------------------------- init ------
+  // ============================================================ init =======
   function init() {
-    // Composer events
-    dom.sendBtn.addEventListener("click", onSendGoal);
-    dom.goalInput.addEventListener("input", () => {
-      dom.sendBtn.disabled =
-        dom.goalInput.disabled || !dom.goalInput.value.trim();
-    });
-    dom.goalInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        onSendGoal();
-      }
-    });
+    // Composer (open-ended mode).
+    if (dom.sendBtn) dom.sendBtn.addEventListener("click", onSendGoal);
+    if (dom.goalInput) {
+      dom.goalInput.addEventListener("input", () => {
+        dom.sendBtn.disabled = dom.goalInput.disabled || !dom.goalInput.value.trim();
+      });
+      dom.goalInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          onSendGoal();
+        }
+      });
+    }
 
-    dom.stopBtn.addEventListener("click", onStop);
+    if (dom.stopBtn) dom.stopBtn.addEventListener("click", onStop);
+    if (dom.liveStopBtn) dom.liveStopBtn.addEventListener("click", onStop);
+    if (dom.resumeBtn) dom.resumeBtn.addEventListener("click", onResume);
 
-    // Language toggle pill
+    // Catalog search (debounced; well under 50ms perceptible latency).
+    if (dom.catalogSearch) {
+      let searchTimer = null;
+      dom.catalogSearch.addEventListener("input", () => {
+        state.searchQuery = dom.catalogSearch.value;
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          renderCatalog();
+        }, 30);
+      });
+    }
+
+    // Open-ended toggle.
+    if (dom.openEndedCta) dom.openEndedCta.addEventListener("click", showOpenEnded);
+    if (dom.backToCatalogBtn) dom.backToCatalogBtn.addEventListener("click", showCatalog);
+
+    // Modal action buttons.
+    if (globalThis.__QC_UI__ && globalThis.__QC_UI__.modal) {
+      try { globalThis.__QC_UI__.modal.bind(dom.detailModal); } catch (_e) {}
+      try { globalThis.__QC_UI__.modal.bind(dom.previewModal); } catch (_e) {}
+    }
+    if (dom.detailRunBtn) {
+      dom.detailRunBtn.addEventListener("click", () => {
+        const r = state.currentRecipe;
+        closeRecipeDetail();
+        if (r) openRecipePreview(r);
+      });
+    }
+    if (dom.previewConfirmBtn) {
+      dom.previewConfirmBtn.addEventListener("click", () => {
+        const r = state.currentRecipe;
+        closeRecipePreview();
+        if (r) runRecipe(r);
+      });
+    }
+
+    // Upgrade banner.
+    if (dom.upgradeBannerDismiss) {
+      dom.upgradeBannerDismiss.addEventListener("click", dismissUpgradeBanner);
+    }
+
+    // Language pill.
     const langPill = document.getElementById("langPill");
     if (langPill) {
       const updateLangPillLabel = () => {
-        const cur = (globalThis.__AT_I18N__ && globalThis.__AT_I18N__.lang) || "en";
+        const cur = currentLang();
         langPill.textContent = cur === "ja" ? "日本語" : "EN";
         langPill.dataset.lang = cur;
       };
       updateLangPillLabel();
       langPill.addEventListener("click", () => {
         try {
-          const cur = (globalThis.__AT_I18N__ && globalThis.__AT_I18N__.lang) || "en";
+          const cur = currentLang();
           const next = cur === "ja" ? "en" : "ja";
           globalThis.__AT_I18N__.setLang(next);
         } catch (_e) {}
@@ -923,9 +1516,12 @@
       try {
         globalThis.__AT_I18N__ && globalThis.__AT_I18N__.onChange(() => {
           updateLangPillLabel();
-          // Re-apply data-i18n bindings to fixed markup.
           try { globalThis.__AT_I18N__.apply(document); } catch (_e) {}
-          // Refresh dynamic banner/host text.
+          // Re-render catalog/live so bilingual text follows the new language.
+          renderChips();
+          renderCatalog();
+          updateLivePill(state.runState);
+          updateLiveCounter();
           if (state.runState !== "idle" && state.tabId !== state.visibleTabId) {
             showOffTabBanner();
           }
@@ -933,22 +1529,562 @@
       } catch (_e) {}
     }
 
-    // Chrome listeners
-    try {
-      chrome.runtime.onMessage.addListener(onRuntimeMessage);
-    } catch (_e) {
-      /* background unavailable */
-    }
+    // Chrome listeners.
+    try { chrome.runtime.onMessage.addListener(onRuntimeMessage); } catch (_e) {}
     try {
       chrome.tabs.onActivated.addListener(onTabActivated);
       chrome.tabs.onUpdated.addListener(onTabUpdated);
-    } catch (_e) {
-      /* tabs api unavailable */
-    }
+    } catch (_e) {}
 
     refreshActiveTab();
     setRunState("idle");
+
+    // Catalog data + upgrade banner.
+    renderChips();
+    loadCatalog();
+    maybeShowUpgradeBanner();
   }
+
+  // === First-Run wizard (sec8-firstrun) ===================================
+  // Gates the home view. When chrome.storage.local.at_first_run_done is
+  // falsy, the wizard takes over — hiding catalog/live/composer/upgrade —
+  // until the user finishes or chooses "Decide later".
+  //   • Step 1 — Language (immediate at_lang via __AT_I18N__.setLang)
+  //   • Step 2 — Anthropic API key (with "Skip — fewer recipes" option)
+  //   • Step 3 — Pick a beginner recipe (or "Decide later")
+  // Step index is persisted to at_first_run_step on every transition so a
+  // sidepanel close + re-open resumes where the user left off.
+  // ========================================================================
+  const FIRSTRUN_KEYS = {
+    DONE: "at_first_run_done",
+    STEP: "at_first_run_step",
+    SKIPPED_KEY: "at_first_run_skipped_key",
+    LANG: "at_lang",
+    API_KEY: "at_api_key",
+    MODEL: "at_model",
+  };
+  const firstRunState = {
+    active: false,
+    step: 0,
+    pickedRecipeId: null,
+    apiKey: "",
+    testAbort: null,
+    wired: false,
+    onChangeSubscribed: false,
+  };
+  const fr = {
+    section: null, dots: null, counter: null, steps: null,
+    langEn: null, langJa: null,
+    apiInput: null, testBtn: null, testResult: null,
+    recipesContainer: null,
+    back: null, skip: null, next: null,
+  };
+
+  function firstRunQuery() {
+    fr.section = $("firstRun");
+    fr.dots = $("firstRunDots");
+    fr.counter = $("firstRunCounter");
+    fr.steps = fr.section
+      ? fr.section.querySelectorAll(".firstrun__step")
+      : [];
+    fr.langEn = $("firstRunLangEn");
+    fr.langJa = $("firstRunLangJa");
+    fr.apiInput = $("firstRunApiKey");
+    fr.testBtn = $("firstRunTestKey");
+    fr.testResult = $("firstRunTestResult");
+    fr.recipesContainer = $("firstRunRecipes");
+    fr.back = $("firstRunBack");
+    fr.skip = $("firstRunSkip");
+    fr.next = $("firstRunNext");
+  }
+
+  function firstRunGetStorage(keys) {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get(keys, (out) => {
+          void chrome.runtime.lastError;
+          resolve(out || {});
+        });
+      } catch (_e) {
+        resolve({});
+      }
+    });
+  }
+
+  function firstRunSetStorage(obj) {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.set(obj, () => {
+          void chrome.runtime.lastError;
+          resolve();
+        });
+      } catch (_e) {
+        resolve();
+      }
+    });
+  }
+
+  function firstRunRemoveStorage(keys) {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.remove(keys, () => {
+          void chrome.runtime.lastError;
+          resolve();
+        });
+      } catch (_e) {
+        resolve();
+      }
+    });
+  }
+
+  async function firstRunCheck() {
+    firstRunQuery();
+    if (!fr.section) return false; // Wizard markup absent.
+    const stored = await firstRunGetStorage([
+      FIRSTRUN_KEYS.DONE,
+      FIRSTRUN_KEYS.STEP,
+      FIRSTRUN_KEYS.API_KEY,
+    ]);
+    if (stored[FIRSTRUN_KEYS.DONE] === true) return false;
+
+    const savedStep = Number(stored[FIRSTRUN_KEYS.STEP]);
+    firstRunState.step =
+      Number.isFinite(savedStep) && savedStep >= 0 && savedStep <= 2
+        ? savedStep
+        : 0;
+    firstRunState.apiKey =
+      typeof stored[FIRSTRUN_KEYS.API_KEY] === "string"
+        ? stored[FIRSTRUN_KEYS.API_KEY]
+        : "";
+    firstRunEnter();
+    return true;
+  }
+
+  function firstRunEnter() {
+    firstRunState.active = true;
+    if (dom.app) dom.app.setAttribute("data-mode", "firstrun");
+    if (fr.section) fr.section.hidden = false;
+    firstRunWireOnce();
+    firstRunRender();
+  }
+
+  function firstRunExit() {
+    firstRunState.active = false;
+    if (fr.section) fr.section.hidden = true;
+    if (dom.app && dom.app.getAttribute("data-mode") === "firstrun") {
+      // Restore catalog mode (default v0.3 home).
+      dom.app.setAttribute("data-mode", "catalog");
+    }
+    if (firstRunState.testAbort) {
+      try { firstRunState.testAbort.abort("exit"); } catch (_e) {}
+      firstRunState.testAbort = null;
+    }
+  }
+
+  function firstRunWireOnce() {
+    if (firstRunState.wired) return;
+    firstRunState.wired = true;
+
+    // Step 1 — language radio cards.
+    if (fr.langEn) fr.langEn.addEventListener("click", () => firstRunPickLang("en"));
+    if (fr.langJa) fr.langJa.addEventListener("click", () => firstRunPickLang("ja"));
+    const langKey = (e) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        const target = document.activeElement === fr.langEn ? fr.langJa : fr.langEn;
+        if (target) target.focus();
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const lang = e.currentTarget && e.currentTarget.getAttribute("data-lang");
+        if (lang) firstRunPickLang(lang);
+      }
+    };
+    if (fr.langEn) fr.langEn.addEventListener("keydown", langKey);
+    if (fr.langJa) fr.langJa.addEventListener("keydown", langKey);
+
+    // Step 2 — API key input + test connection.
+    if (fr.apiInput) {
+      fr.apiInput.addEventListener("input", () => {
+        firstRunState.apiKey = fr.apiInput.value.trim();
+        if (fr.testBtn) fr.testBtn.disabled = firstRunState.apiKey.length === 0;
+        if (fr.testResult) {
+          fr.testResult.textContent = "";
+          fr.testResult.removeAttribute("data-state");
+        }
+        firstRunUpdateFooter();
+      });
+      fr.apiInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && fr.testBtn && !fr.testBtn.disabled) {
+          e.preventDefault();
+          firstRunTestKey();
+        }
+      });
+    }
+    if (fr.testBtn) fr.testBtn.addEventListener("click", firstRunTestKey);
+
+    // Footer.
+    if (fr.back) fr.back.addEventListener("click", firstRunBack);
+    if (fr.skip) fr.skip.addEventListener("click", firstRunSkip);
+    if (fr.next) fr.next.addEventListener("click", firstRunNext);
+
+    // Re-render dots/counter/recipes when the user flips language mid-wizard.
+    if (!firstRunState.onChangeSubscribed) {
+      try {
+        globalThis.__AT_I18N__ &&
+          globalThis.__AT_I18N__.onChange(() => {
+            if (firstRunState.active) firstRunRender();
+          });
+        firstRunState.onChangeSubscribed = true;
+      } catch (_e) {}
+    }
+  }
+
+  function firstRunRender() {
+    if (!fr.section) return;
+
+    // Progress dots
+    const dots = fr.dots ? fr.dots.querySelectorAll(".firstrun__dot") : [];
+    dots.forEach((d, i) => {
+      d.removeAttribute("data-current");
+      d.removeAttribute("data-done");
+      if (i < firstRunState.step) d.setAttribute("data-done", "true");
+      else if (i === firstRunState.step) d.setAttribute("data-current", "true");
+    });
+    if (fr.dots) {
+      fr.dots.setAttribute("aria-valuenow", String(firstRunState.step + 1));
+    }
+    if (fr.counter) {
+      fr.counter.textContent = tr("firstRun.stepCounter", {
+        n: firstRunState.step + 1,
+        total: 3,
+      });
+    }
+
+    // Show the current step.
+    if (fr.steps && fr.steps.length) {
+      fr.steps.forEach((s) => {
+        const idx = Number(s.getAttribute("data-step"));
+        s.hidden = idx !== firstRunState.step;
+      });
+    }
+
+    // Step 1 — reflect selection on the language radios.
+    const lang = currentLang();
+    if (fr.langEn) fr.langEn.setAttribute("aria-checked", String(lang === "en"));
+    if (fr.langJa) fr.langJa.setAttribute("aria-checked", String(lang === "ja"));
+
+    // Step 2 — restore api key value if user navigates back.
+    if (firstRunState.step === 1) {
+      if (fr.apiInput && fr.apiInput.value !== firstRunState.apiKey) {
+        fr.apiInput.value = firstRunState.apiKey || "";
+      }
+      if (fr.testBtn) {
+        fr.testBtn.disabled = !(firstRunState.apiKey && firstRunState.apiKey.length > 0);
+      }
+    }
+    // Step 3 — load recipes lazily.
+    if (firstRunState.step === 2) {
+      firstRunRenderRecipes();
+    }
+
+    firstRunUpdateFooter();
+
+    // Focus management — move focus to a sensible starting control.
+    try {
+      if (firstRunState.step === 0) {
+        const target = lang === "ja" ? fr.langJa : fr.langEn;
+        if (target) target.focus({ preventScroll: true });
+      } else if (firstRunState.step === 1 && fr.apiInput) {
+        fr.apiInput.focus({ preventScroll: true });
+      }
+    } catch (_e) {}
+  }
+
+  function firstRunUpdateFooter() {
+    if (fr.back) fr.back.hidden = firstRunState.step === 0;
+
+    if (fr.skip) {
+      if (firstRunState.step === 1) {
+        fr.skip.hidden = false;
+        fr.skip.textContent = tr("firstRun.step2.skip");
+      } else if (firstRunState.step === 2) {
+        fr.skip.hidden = false;
+        fr.skip.textContent = tr("firstRun.step3.later");
+      } else {
+        fr.skip.hidden = true;
+        fr.skip.textContent = "";
+      }
+    }
+
+    if (fr.next) {
+      if (firstRunState.step === 2) {
+        // Step 3 has no Next: user advances by picking a recipe or "Decide later".
+        fr.next.hidden = true;
+        fr.next.disabled = true;
+      } else {
+        fr.next.hidden = false;
+        fr.next.textContent = tr("firstRun.next");
+        // Both Step 1 and Step 2 always allow advancing (language is preselected,
+        // API key is optional via the Skip path).
+        fr.next.disabled = false;
+      }
+    }
+  }
+
+  function firstRunPickLang(lang) {
+    try {
+      globalThis.__AT_I18N__ && globalThis.__AT_I18N__.setLang(lang);
+    } catch (_e) {}
+    // setLang fires onChange which calls firstRunRender via our subscription,
+    // but call directly so the aria-checked flip is immediate even before the
+    // subscription resolves.
+    firstRunRender();
+  }
+
+  function firstRunSaveStep(step) {
+    firstRunSetStorage({ [FIRSTRUN_KEYS.STEP]: step });
+  }
+
+  function firstRunBack() {
+    if (firstRunState.step > 0) firstRunGoto(firstRunState.step - 1);
+  }
+
+  function firstRunNext() {
+    if (firstRunState.step === 0) {
+      firstRunGoto(1);
+      return;
+    }
+    if (firstRunState.step === 1) {
+      // Persist API key (may be empty — user can come back via reset).
+      const apiKey = firstRunState.apiKey || "";
+      firstRunSetStorage({
+        [FIRSTRUN_KEYS.API_KEY]: apiKey,
+        [FIRSTRUN_KEYS.SKIPPED_KEY]: apiKey.length === 0,
+      });
+      firstRunGoto(2);
+      return;
+    }
+  }
+
+  function firstRunSkip() {
+    if (firstRunState.step === 1) {
+      firstRunSetStorage({ [FIRSTRUN_KEYS.SKIPPED_KEY]: true });
+      firstRunGoto(2);
+      return;
+    }
+    if (firstRunState.step === 2) {
+      firstRunComplete();
+    }
+  }
+
+  function firstRunGoto(step) {
+    firstRunState.step = step;
+    firstRunSaveStep(step);
+    firstRunRender();
+  }
+
+  async function firstRunComplete() {
+    await firstRunSetStorage({ [FIRSTRUN_KEYS.DONE]: true });
+    await firstRunRemoveStorage(FIRSTRUN_KEYS.STEP);
+    firstRunExit();
+  }
+
+  async function firstRunTestKey() {
+    const key = (fr.apiInput && fr.apiInput.value.trim()) || "";
+    if (!key) return;
+    if (firstRunState.testAbort) {
+      try { firstRunState.testAbort.abort("superseded"); } catch (_e) {}
+    }
+    const abort = new AbortController();
+    firstRunState.testAbort = abort;
+
+    if (fr.testResult) {
+      fr.testResult.textContent = tr("system.askingClaude");
+      fr.testResult.setAttribute("data-state", "pending");
+    }
+    if (fr.testBtn) fr.testBtn.disabled = true;
+
+    const TIMEOUT_MS = 30000;
+    const timer = setTimeout(() => {
+      try { abort.abort("timeout"); } catch (_e) {}
+    }, TIMEOUT_MS);
+
+    const stored = await firstRunGetStorage(FIRSTRUN_KEYS.MODEL);
+    const model = (stored && stored[FIRSTRUN_KEYS.MODEL]) || "claude-haiku-4-5-20251001";
+
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "ping" }],
+        }),
+        signal: abort.signal,
+      });
+      if (response.ok) {
+        // Persist the key on successful test so a later "Next" can't overwrite
+        // with empty if the user clears the field after testing.
+        await firstRunSetStorage({
+          [FIRSTRUN_KEYS.API_KEY]: key,
+          [FIRSTRUN_KEYS.SKIPPED_KEY]: false,
+        });
+        if (fr.testResult) {
+          fr.testResult.textContent = "✓ " + tr("common.ok");
+          fr.testResult.setAttribute("data-state", "ok");
+        }
+      } else {
+        if (fr.testResult) {
+          fr.testResult.textContent =
+            "✕ " + tr("options.apiKey.failedStatus", { status: response.status });
+          fr.testResult.setAttribute("data-state", "fail");
+        }
+      }
+    } catch (err) {
+      if (fr.testResult) {
+        const reason = abort.signal && abort.signal.reason;
+        let msg;
+        if (reason === "timeout") {
+          msg = tr("options.apiKey.testTimeout", { seconds: 30 });
+        } else if (reason === "superseded") {
+          msg = tr("options.apiKey.testCancelled");
+        } else {
+          msg = tr("options.apiKey.networkError", {
+            message: (err && err.message) || "unknown",
+          });
+        }
+        fr.testResult.textContent = "✕ " + msg;
+        fr.testResult.setAttribute("data-state", "fail");
+      }
+    } finally {
+      clearTimeout(timer);
+      if (firstRunState.testAbort === abort) firstRunState.testAbort = null;
+      if (fr.testBtn) {
+        fr.testBtn.disabled = !(fr.apiInput && fr.apiInput.value.trim().length > 0);
+      }
+    }
+  }
+
+  async function firstRunRenderRecipes() {
+    if (!fr.recipesContainer) return;
+
+    // Recipe catalog might not be populated yet (init() also calls loadCatalog
+    // asynchronously). Fall back to a fresh SW round-trip when state.catalog
+    // is empty so the wizard never blanks.
+    let catalog = Array.isArray(state.catalog) ? state.catalog : [];
+    if (catalog.length === 0) {
+      try {
+        const resp = await new Promise((resolve) => {
+          try {
+            chrome.runtime.sendMessage({ type: MSG_GET_RECIPE_CATALOG }, (out) => {
+              void chrome.runtime.lastError;
+              resolve(out);
+            });
+          } catch (_e) {
+            resolve(null);
+          }
+        });
+        if (resp && resp.ok && Array.isArray(resp.recipes)) {
+          catalog = resp.recipes;
+          // Share with the catalog renderer so it doesn't double-fetch.
+          state.catalog = resp.recipes;
+        }
+      } catch (_e) { /* ignore */ }
+    }
+
+    // Re-read the skip-key flag each render so back ⇄ forward stays accurate.
+    const skipObj = await firstRunGetStorage(FIRSTRUN_KEYS.SKIPPED_KEY);
+    const skippedKey = skipObj && skipObj[FIRSTRUN_KEYS.SKIPPED_KEY] === true;
+
+    const filtered = catalog.filter((r) => {
+      if (!r) return false;
+      if (r.disabled) return false;
+      if (r.difficulty !== "beginner") return false;
+      if (skippedKey) {
+        const prereqs = Array.isArray(r.prerequisites) ? r.prerequisites : [];
+        if (prereqs.indexOf("requires-anthropic-key") !== -1) return false;
+        // 'key-issue' category is the canonical "rules-only OK" — but
+        // generating a key without a key is the canonical paradox.
+        if (r.category === "key-issue") return false;
+      }
+      return true;
+    });
+    const top3 = filtered.slice(0, 3);
+
+    fr.recipesContainer.innerHTML = "";
+    if (top3.length === 0) {
+      fr.recipesContainer.appendChild(
+        el("p", {
+          className: "firstrun__recipe-empty",
+          text: tr("error.recipeUnavailable"),
+        })
+      );
+      return;
+    }
+
+    top3.forEach((r) => {
+      const minutes = Math.round((r.estimatedSeconds || 0) / 60);
+      const diffLabel = tr("catalog.difficulty." + r.difficulty);
+      const meta = [el("span", { text: diffLabel })];
+      if (minutes > 0) {
+        meta.push(
+          el("span", {
+            text: tr("catalog.estimate.minutes", { min: minutes }),
+          })
+        );
+      }
+      const card = el(
+        "button",
+        {
+          className: "firstrun__recipe qc-card qc-card--interactive",
+          attrs: {
+            type: "button",
+            role: "listitem",
+            "aria-label": bi(r.title) || r.id,
+            "data-recipe-id": r.id,
+          },
+          on: {
+            click: () => firstRunPickRecipe(r),
+            keydown: (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                firstRunPickRecipe(r);
+              }
+            },
+          },
+        },
+        [
+          el("h3", { className: "firstrun__recipe-title", text: bi(r.title) || r.id }),
+          el("p", {
+            className: "firstrun__recipe-desc",
+            text: bi(r.description) || "",
+          }),
+          el("div", { className: "firstrun__recipe-meta" }, meta),
+        ]
+      );
+      fr.recipesContainer.appendChild(card);
+    });
+  }
+
+  async function firstRunPickRecipe(recipe) {
+    if (!recipe || !recipe.id) return;
+    firstRunState.pickedRecipeId = recipe.id;
+    // Persist completion BEFORE starting the run so a reload mid-run doesn't
+    // bounce the user back into the wizard.
+    await firstRunSetStorage({ [FIRSTRUN_KEYS.DONE]: true });
+    await firstRunRemoveStorage(FIRSTRUN_KEYS.STEP);
+    firstRunExit();
+    // Reuse the existing runRecipe() path (renders goal card, sets state,
+    // sends GOAL_SUBMIT with recipeId).
+    try { runRecipe(recipe); } catch (_e) {}
+  }
+  // === /First-Run wizard ==================================================
 
   async function bootstrap() {
     try {
@@ -958,6 +2094,11 @@
       }
     } catch (_e) {}
     init();
+    // First-Run gate runs AFTER init() so init() can wire its listeners and
+    // start the catalog fetch. If the wizard activates, it sets
+    // data-mode="firstrun" which hides catalog/composer/live until the user
+    // completes or chooses "Decide later".
+    try { await firstRunCheck(); } catch (_e) {}
   }
 
   if (document.readyState === "loading") {
