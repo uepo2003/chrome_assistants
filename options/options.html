@@ -31,13 +31,83 @@
       </div>
     </section>
 
-    <!-- Section 1: API key -->
-    <section class="qc-card section" aria-labelledby="sec-key">
-      <h2 id="sec-key" class="section__title" data-i18n="options.sec.apiKey">Anthropic API key</h2>
-      <p class="section__desc" data-i18n="options.sec.apiKeyDesc">Required to talk to Claude when the extension can't decide locally.</p>
+    <!-- Section 1: AI Provider -->
+    <section class="qc-card section" aria-labelledby="sec-provider">
+      <h2 id="sec-provider" class="section__title">AI Provider</h2>
+      <p class="section__desc">Choose which AI service to use. Gemini is the default (low cost). A fallback provider is used automatically on errors.</p>
 
       <div class="qc-field">
-        <label class="qc-field__label" for="api-key" data-i18n="options.sec.apiKey">Anthropic API key</label>
+        <label class="qc-field__label" for="provider-select">Primary provider</label>
+        <select id="provider-select" class="qc-select">
+          <option value="gemini">Gemini (Google) — default, low cost</option>
+          <option value="deepseek">DeepSeek — growth tier</option>
+          <option value="anthropic">Anthropic Claude — reliable fallback</option>
+          <option value="openai">OpenAI — compatible fallback</option>
+        </select>
+      </div>
+
+      <div class="qc-field">
+        <label class="qc-field__label" for="fallback-provider-select">Fallback provider (auto-retry on error)</label>
+        <select id="fallback-provider-select" class="qc-select">
+          <option value="anthropic">Anthropic Claude</option>
+          <option value="gemini">Gemini (Google)</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="openai">OpenAI</option>
+          <option value="none">None (no fallback)</option>
+        </select>
+      </div>
+
+      <div class="qc-field">
+        <label class="qc-field__label" for="model-select">Model</label>
+        <select id="model-select" class="qc-select">
+          <!-- Options populated by JS based on selected provider -->
+        </select>
+        <p class="qc-field__hint" id="model-hint">Model used for the selected provider.</p>
+      </div>
+    </section>
+
+    <!-- Section 1b: API keys -->
+    <section class="qc-card section" aria-labelledby="sec-key">
+      <h2 id="sec-key" class="section__title">API Keys</h2>
+      <p class="section__desc">Enter an API key for each provider you want to use. Keys are stored only in your browser.</p>
+
+      <!-- Gemini key -->
+      <div class="qc-field provider-key-field" id="key-field-gemini">
+        <label class="qc-field__label" for="api-key-gemini">Gemini API key</label>
+        <div class="key-row">
+          <input id="api-key-gemini" class="qc-input key-row__input" type="password"
+            autocomplete="off" spellcheck="false" placeholder="AIza..." />
+          <button type="button" class="icon-btn toggle-key-btn" data-target="api-key-gemini"
+            aria-label="Show or hide Gemini API key" aria-pressed="false" title="Show / hide">
+            <span class="toggle-key-icon" aria-hidden="true">&#128065;</span>
+          </button>
+        </div>
+        <p class="qc-field__hint">
+          Stored locally. Sent only to generativelanguage.googleapis.com.
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Get a key →</a>
+        </p>
+      </div>
+
+      <!-- DeepSeek key -->
+      <div class="qc-field provider-key-field" id="key-field-deepseek">
+        <label class="qc-field__label" for="api-key-deepseek">DeepSeek API key</label>
+        <div class="key-row">
+          <input id="api-key-deepseek" class="qc-input key-row__input" type="password"
+            autocomplete="off" spellcheck="false" placeholder="sk-..." />
+          <button type="button" class="icon-btn toggle-key-btn" data-target="api-key-deepseek"
+            aria-label="Show or hide DeepSeek API key" aria-pressed="false" title="Show / hide">
+            <span class="toggle-key-icon" aria-hidden="true">&#128065;</span>
+          </button>
+        </div>
+        <p class="qc-field__hint">
+          Stored locally. Sent only to api.deepseek.com.
+          <a href="https://platform.deepseek.com/" target="_blank" rel="noopener noreferrer">Get a key →</a>
+        </p>
+      </div>
+
+      <!-- Anthropic key -->
+      <div class="qc-field provider-key-field" id="key-field-anthropic">
+        <label class="qc-field__label" for="api-key">Anthropic API key</label>
         <div class="key-row">
           <input
             id="api-key"
@@ -65,6 +135,23 @@
         <p class="qc-field__hint">
           <span data-i18n="options.apiKey.helper">Stored locally in your browser. Never sent anywhere except api.anthropic.com.</span>
           <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" data-i18n="options.apiKey.getKey">Get a key →</a>
+        </p>
+      </div>
+
+      <!-- OpenAI key -->
+      <div class="qc-field provider-key-field" id="key-field-openai">
+        <label class="qc-field__label" for="api-key-openai">OpenAI API key</label>
+        <div class="key-row">
+          <input id="api-key-openai" class="qc-input key-row__input" type="password"
+            autocomplete="off" spellcheck="false" placeholder="sk-..." />
+          <button type="button" class="icon-btn toggle-key-btn" data-target="api-key-openai"
+            aria-label="Show or hide OpenAI API key" aria-pressed="false" title="Show / hide">
+            <span class="toggle-key-icon" aria-hidden="true">&#128065;</span>
+          </button>
+        </div>
+        <p class="qc-field__hint">
+          Stored locally. Sent only to api.openai.com.
+          <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Get a key →</a>
         </p>
       </div>
 
@@ -141,25 +228,6 @@
           </span>
         </label>
       </fieldset>
-
-      <div class="qc-field">
-        <label class="qc-field__label" for="model" data-i18n="options.behavior.model">Model</label>
-        <input
-          id="model"
-          class="qc-input"
-          type="text"
-          list="model-suggestions"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="claude-haiku-4-5-20251001"
-        />
-        <datalist id="model-suggestions">
-          <option value="claude-haiku-4-5-20251001"></option>
-          <option value="claude-sonnet-4-6"></option>
-          <option value="claude-opus-4-7"></option>
-        </datalist>
-        <p class="qc-field__hint" data-i18n="options.behavior.modelHelper">Defaults to claude-haiku-4-5-20251001.</p>
-      </div>
 
       <div class="group">
         <label class="checkbox">

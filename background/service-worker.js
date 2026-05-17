@@ -54,6 +54,8 @@ const MSG = {
   // Recipe-driven handoff:
   PAUSED_FOR_HUMAN: 'AT_PAUSED_FOR_HUMAN',
   RESUME: 'AT_RESUME',
+  // Guide mode (BtoB pivot): sidepanel -> content "user did it / next".
+  GUIDE_ADVANCE: 'AT_GUIDE_ADVANCE',
 };
 
 // ---------- Dev log ring buffer + own-context capture ---------------------
@@ -1117,6 +1119,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           });
         } catch (err) {
           console.warn('[auto-tutorial] RESUME forward failed:', err);
+        }
+        sendResponse({ ok: true });
+      })();
+      return true;
+    }
+
+    case MSG.GUIDE_ADVANCE: {
+      // Guide mode: the user pressed "次へ / Next" in the sidepanel to say
+      // they performed the highlighted action. Forward to content so the
+      // in-flight guide wait resolves. Mirrors RESUME's simple forward.
+      (async () => {
+        const tabId = explicitTabId ?? senderTabId
+          ?? (await getActiveTabId());
+        if (typeof tabId !== 'number') {
+          sendResponse({ ok: false, error: 'no_tab_id' });
+          return;
+        }
+        try {
+          await chrome.tabs.sendMessage(tabId, {
+            type: MSG.GUIDE_ADVANCE,
+            tabId,
+          });
+        } catch (err) {
+          console.warn('[auto-tutorial] GUIDE_ADVANCE forward failed:', err);
         }
         sendResponse({ ok: true });
       })();

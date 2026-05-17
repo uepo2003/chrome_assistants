@@ -39,6 +39,9 @@
     PAUSED_FOR_HUMAN: 'AT_PAUSED_FOR_HUMAN', // content -> sidepanel: { recipeId, when, why: {en, ja} }
     RESUME: 'AT_RESUME',                     // sidepanel -> content: resume after human handoff
 
+    // Guide mode (BtoB pivot — second cursor / "Guide me"):
+    GUIDE_ADVANCE: 'AT_GUIDE_ADVANCE',       // sidepanel -> content: user says "I did it / next"
+
     // ----- Async-progress visibility ---------------------------------------
     AI_PROGRESS: 'AT_AI_PROGRESS',           // background -> sidepanel: { kind, elapsedMs, label }
     ABORT_PLAN: 'AT_ABORT_PLAN',             // sidepanel -> background: cancel in-flight plan
@@ -53,12 +56,19 @@
 
   const STORAGE_KEYS = Object.freeze({
     API_KEY: 'at_api_key',
+    // Provider-scoped API keys (override at_api_key for that provider).
+    API_KEY_GEMINI:    'at_api_key_gemini',
+    API_KEY_DEEPSEEK:  'at_api_key_deepseek',
+    API_KEY_OPENAI:    'at_api_key_openai',
     MODE: 'at_mode',                 // 'rules' | 'hybrid' | 'ai'
-    MODEL: 'at_model',                // claude model id
-    SPEED: 'at_speed',                // 'slow' | 'normal' | 'fast'
-    AUTO_START: 'at_auto_start',      // boolean
-    DEV_MODE: 'at_dev_mode',          // boolean — enables error capture forwarding
-    LANG: 'at_lang',                  // 'en' | 'ja' — UI language
+    MODEL: 'at_model',               // model id for the active provider
+    SPEED: 'at_speed',               // 'slow' | 'normal' | 'fast'
+    AUTO_START: 'at_auto_start',     // boolean
+    DEV_MODE: 'at_dev_mode',         // boolean — enables error capture forwarding
+    LANG: 'at_lang',                 // 'en' | 'ja' — UI language
+    PROVIDER:          'at_provider',          // 'gemini'|'deepseek'|'anthropic'|'openai'
+    FALLBACK_PROVIDER: 'at_fallback_provider', // same enum, used on retryable errors
+    RUN_MODE:          'at_run_mode',          // 'auto' | 'guide' — run-mode toggle
   });
 
   // Timeouts (ms) for in-flight Anthropic calls.
@@ -71,9 +81,12 @@
 
   const DEFAULTS = Object.freeze({
     MODE: 'hybrid',
-    MODEL: 'claude-haiku-4-5-20251001',
+    MODEL: 'gemini-2.0-flash',       // default model for default provider
     SPEED: 'normal',
     AUTO_START: false,
+    PROVIDER: 'gemini',
+    FALLBACK_PROVIDER: 'anthropic',
+    RUN_MODE: 'auto',                // 'auto' = AI acts; 'guide' = AI points, user acts
   });
 
   // Speed -> milliseconds between actions / cursor durations.

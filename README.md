@@ -3,11 +3,14 @@
 > Skip the boring setup. Get to the part where you build.
 > 面倒なセットアップは飛ばして、作る楽しさだけ手元に。
 
-Quickstart Copilot is a Chrome extension that runs the *setup parts* of vibe coding for you — opening sign-ups, connecting GitHub to Vercel, registering SSH keys, getting API keys from Anthropic / OpenAI — all from a Recipe catalog. You're never locked out: every step is visible, pausable, and reversible.
+Quickstart Copilot is a Chrome extension that guides you through specific in-browser tasks — from vibe-coding setup (sign-ups, API keys, GitHub connections) to BtoB SaaS tools like kintone, Lステップ, Chatwork, and Slack — all from a Recipe catalog. You're never locked out: every step is visible, pausable, and reversible.
 
 ## Who it's for
 
 - Lovable / Bolt / v0 / Replit / Cursor users who can build apps but stall on GitHub / Supabase / Vercel onboarding.
+- **kintone field leaders** teaching new staff how to navigate and add records to their customized kintone apps.
+- **Lステップ agency clients** who received a delivered scenario and need help making edits without calling support.
+- **Chatwork / Slack non-IT users** who get lost creating group chats, adding tasks, or inviting people.
 - Anyone tired of writing out the same 10-step setup prompt every time.
 - Not (yet) for general-purpose browser automation — see *Why so narrow?* below.
 
@@ -19,6 +22,19 @@ Quickstart Copilot is a Chrome extension that runs the *setup parts* of vibe cod
 4. If you'd rather just type a free-form goal, "Open-ended mode" is still here in the catalog footer.
 
 ## v1 recipes
+
+### BtoB SaaS guides (new)
+
+| Recipe | Service | Difficulty |
+| --- | --- | --- |
+| Add a new record in a kintone app | *.cybozu.com | Beginner |
+| Find your way around a kintone app | *.cybozu.com | Beginner |
+| Find and edit a scenario in Lステップ | manager.linestep.net | Beginner |
+| Add a task in a Chatwork room | www.chatwork.com | Beginner |
+| Create a group chat in Chatwork | www.chatwork.com | Beginner |
+| Create a channel and invite people in Slack | app.slack.com | Beginner |
+
+### Developer setup
 
 | Recipe | Service | Difficulty |
 | --- | --- | --- |

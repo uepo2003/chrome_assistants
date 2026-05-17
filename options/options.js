@@ -1,20 +1,43 @@
 /* Quickstart Copilot — options page logic */
 
 const KEYS = {
-  API_KEY: 'at_api_key',
-  MODE: 'at_mode',
-  MODEL: 'at_model',
-  SPEED: 'at_speed',
-  AUTO_START: 'at_auto_start',
-  DEV_MODE: 'at_dev_mode',
+  API_KEY:            'at_api_key',
+  API_KEY_GEMINI:     'at_api_key_gemini',
+  API_KEY_DEEPSEEK:   'at_api_key_deepseek',
+  API_KEY_OPENAI:     'at_api_key_openai',
+  MODE:               'at_mode',
+  MODEL:              'at_model',
+  SPEED:              'at_speed',
+  AUTO_START:         'at_auto_start',
+  DEV_MODE:           'at_dev_mode',
+  PROVIDER:           'at_provider',
+  FALLBACK_PROVIDER:  'at_fallback_provider',
 };
 
 const DEFAULTS = {
-  MODE: 'hybrid',
-  MODEL: 'claude-haiku-4-5-20251001',
-  SPEED: 'normal',
-  AUTO_START: false,
-  DEV_MODE: true,
+  MODE:              'hybrid',
+  MODEL:             'gemini-2.0-flash',
+  SPEED:             'normal',
+  AUTO_START:        false,
+  DEV_MODE:          true,
+  PROVIDER:          'gemini',
+  FALLBACK_PROVIDER: 'anthropic',
+};
+
+// Models available per provider (for the model dropdown).
+const PROVIDER_MODELS = {
+  gemini:    ['gemini-2.0-flash', 'gemini-2.5-flash-lite'],
+  deepseek:  ['deepseek-chat'],
+  anthropic: ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-7'],
+  openai:    ['gpt-4o-mini'],
+};
+
+// Provider → test-connection implementation
+const PROVIDER_TEST = {
+  gemini:   testGemini,
+  deepseek: testOpenAICompat.bind(null, 'https://api.deepseek.com/v1/chat/completions', 'deepseek-chat'),
+  anthropic: testAnthropic,
+  openai:   testOpenAICompat.bind(null, 'https://api.openai.com/v1/chat/completions', 'gpt-4o-mini'),
 };
 
 const TEST_TIMEOUT_MS = 30000;
@@ -24,32 +47,41 @@ const MSG_DEV_LOG_PUSH = 'AT_DEV_LOG_PUSH';
 const MSG_RECIPE_HEALTH_REFRESH = 'AT_RECIPE_HEALTH_REFRESH';
 const MSG_RECIPE_HEALTH_UPDATED = 'AT_RECIPE_HEALTH_UPDATED';
 
-const VALID_MODES = new Set(['rules', 'hybrid', 'ai']);
+const VALID_MODES  = new Set(['rules', 'hybrid', 'ai']);
 const VALID_SPEEDS = new Set(['slow', 'normal', 'fast']);
+const VALID_PROVIDERS = new Set(['gemini', 'deepseek', 'anthropic', 'openai']);
 
 // DOM refs
 const $ = (id) => document.getElementById(id);
-const apiKeyInput = $('api-key');
-const toggleKeyBtn = $('toggle-key');
-const toggleKeyIcon = $('toggle-key-icon');
-const keyWarning = $('key-warning');
-const saveKeyBtn = $('save-key');
-const testKeyBtn = $('test-key');
-const testSpinner = $('test-spinner');
-const testResult = $('test-result');
-const saveToast = $('save-toast');
-const modelInput = $('model');
+
+// Provider section
+const providerSelect         = $('provider-select');
+const fallbackProviderSelect = $('fallback-provider-select');
+const modelSelect            = $('model-select');
+
+// API key fields
+const apiKeyInput     = $('api-key');           // Anthropic (legacy id preserved)
+const toggleKeyBtn    = $('toggle-key');
+const toggleKeyIcon   = $('toggle-key-icon');
+const keyWarning      = $('key-warning');
+const apiKeyGemini    = $('api-key-gemini');
+const apiKeyDeepSeek  = $('api-key-deepseek');
+const apiKeyOpenAI    = $('api-key-openai');
+
+const saveKeyBtn   = $('save-key');
+const testKeyBtn   = $('test-key');
+const testSpinner  = $('test-spinner');
+const testResult   = $('test-result');
+const saveToast    = $('save-toast');
 const autoStartCheckbox = $('auto-start');
 
 const cancelTestBtn = $('cancel-test');
-const testElapsed = $('test-elapsed');
-const langSelect = $('lang-select');
+const testElapsed   = $('test-elapsed');
+const langSelect    = $('lang-select');
 
-// Maintenance section — recheck button owned here; reset-first-run button
-// markup lives here for shared styling but its click handler is owned by the
-// first-run wizard agent (sec8-firstrun) so storage logic stays in one place.
-const recheckRecipesBtn = $('recheck-recipes');
-const maintenanceToast = $('maintenance-toast');
+// Maintenance section
+const recheckRecipesBtn  = $('recheck-recipes');
+const maintenanceToast   = $('maintenance-toast');
 
 function tt(key, vars) {
   try {
@@ -59,20 +91,43 @@ function tt(key, vars) {
   }
 }
 const devModeCheckbox = $('dev-mode');
-const devRefreshBtn = $('dev-refresh');
-const devClearBtn = $('dev-clear');
-const devAutoRefresh = $('dev-auto-refresh');
-const devLogStats = $('dev-log-stats');
-const devLogList = $('dev-log-list');
-const devLogEmpty = $('dev-log-empty');
+const devRefreshBtn   = $('dev-refresh');
+const devClearBtn     = $('dev-clear');
+const devAutoRefresh  = $('dev-auto-refresh');
+const devLogStats     = $('dev-log-stats');
+const devLogList      = $('dev-log-list');
+const devLogEmpty     = $('dev-log-empty');
 
-const modeRadios = () => document.querySelectorAll('input[name="mode"]');
+const modeRadios  = () => document.querySelectorAll('input[name="mode"]');
 const speedRadios = () => document.querySelectorAll('input[name="speed"]');
 
 // State for the in-flight Test connection request.
 let testAbort = null;
 let testElapsedTimer = null;
 let testStartedAt = 0;
+
+// ---------------------------------------------------------------------------
+// Model dropdown management
+// ---------------------------------------------------------------------------
+
+function populateModelSelect(provider, currentModel) {
+  if (!modelSelect) return;
+  const models = PROVIDER_MODELS[provider] || PROVIDER_MODELS.gemini;
+  modelSelect.innerHTML = '';
+  for (const m of models) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    modelSelect.appendChild(opt);
+  }
+  // Select stored model if it's in the list, otherwise select first.
+  const inList = models.includes(currentModel);
+  modelSelect.value = inList ? currentModel : models[0];
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function getCheckedValue(nodeList, fallback) {
   for (const el of nodeList) {
@@ -98,21 +153,27 @@ function showTestResult(success, message) {
 }
 
 function updateTestButtonEnabled() {
-  testKeyBtn.disabled = apiKeyInput.value.trim().length === 0;
+  // Enable "Test" whenever ANY key is filled in.
+  const provider = providerSelect ? providerSelect.value : 'anthropic';
+  let hasKey = false;
+  if (provider === 'gemini')    hasKey = (apiKeyGemini && apiKeyGemini.value.trim().length > 0) || (apiKeyInput && apiKeyInput.value.trim().length > 0);
+  else if (provider === 'deepseek') hasKey = (apiKeyDeepSeek && apiKeyDeepSeek.value.trim().length > 0) || (apiKeyInput && apiKeyInput.value.trim().length > 0);
+  else if (provider === 'openai')   hasKey = (apiKeyOpenAI && apiKeyOpenAI.value.trim().length > 0) || (apiKeyInput && apiKeyInput.value.trim().length > 0);
+  else hasKey = (apiKeyInput && apiKeyInput.value.trim().length > 0);
+  testKeyBtn.disabled = !hasKey;
 }
 
 function updateKeyWarning() {
-  const v = apiKeyInput.value.trim();
+  const v = apiKeyInput ? apiKeyInput.value.trim() : '';
   if (v.length > 0 && !v.startsWith('sk-ant-')) {
-    keyWarning.hidden = false;
+    if (keyWarning) keyWarning.hidden = false;
   } else {
-    keyWarning.hidden = true;
+    if (keyWarning) keyWarning.hidden = true;
   }
 }
 
 function showSavedToast() {
   saveToast.hidden = false;
-  // Force reflow so transition runs.
   void saveToast.offsetWidth;
   saveToast.classList.add('show');
   clearTimeout(showSavedToast._t);
@@ -124,9 +185,7 @@ function showSavedToast() {
   }, 1500);
 }
 
-// ---------- Maintenance toast (re-check recipes) -----------------
-// Generic toast helper that pins to the maintenance section. Pass durationMs
-// = 0 to keep the toast visible until the next call updates it.
+// ---------- Maintenance toast -----------------
 function showMaintenanceToast(text, durationMs) {
   if (!maintenanceToast) return;
   maintenanceToast.textContent = text;
@@ -144,17 +203,14 @@ function showMaintenanceToast(text, durationMs) {
   }
 }
 
-// Local fallback strings for transient maintenance toast text. These keys
-// are not in common/i18n.js (which sec9 must not modify), so we keep the
-// JA/EN map inline and prefer the live i18n value if it ever lands later.
 const LOCAL_STRINGS = {
-  rechecking: { en: 'Re-checking…',   ja: '再検証中…' },
-  recheckDone:{ en: 'Done ✓',         ja: '完了 ✓' },
-  firstRunReset: { en: 'First-run wizard reset ✓', ja: '初回ウィザードをリセットしました ✓' },
+  rechecking:    { en: 'Re-checking…',                    ja: '再検証中…' },
+  recheckDone:   { en: 'Done ✓',                          ja: '完了 ✓' },
+  firstRunReset: { en: 'First-run wizard reset ✓',        ja: '初回ウィザードをリセットしました ✓' },
 };
 function lt(localKey) {
   try {
-    var lang = (globalThis.__AT_I18N__ && globalThis.__AT_I18N__.lang) || 'en';
+    var lang  = (globalThis.__AT_I18N__ && globalThis.__AT_I18N__.lang) || 'en';
     var entry = LOCAL_STRINGS[localKey];
     return (entry && (entry[lang] || entry.en)) || '';
   } catch (_e) {
@@ -172,13 +228,7 @@ async function onRecheckRecipesClick() {
     try {
       await chrome.runtime.sendMessage({ type: MSG_RECIPE_HEALTH_REFRESH });
       void chrome.runtime.lastError;
-    } catch (_e) {
-      // Background asleep or no listener — let onUpdated path still fire if
-      // it wakes up, otherwise fall back to a short timeout below.
-    }
-    // Safety: if the broadcast never arrives (background asleep, no recipes
-    // loaded yet), still clear the toast after a generous window so the UI
-    // never looks stuck.
+    } catch (_e) { /* background asleep */ }
     setTimeout(() => {
       if (recheckInFlight) {
         recheckInFlight = false;
@@ -199,9 +249,7 @@ function onRecipeHealthUpdated() {
   showMaintenanceToast(lt('recheckDone'), 1500);
 }
 
-// ===== First-Run wizard reset (sec8-firstrun) ============================
-// Removes the completion flag + saved step so the next sidepanel open
-// shows Step 1 again. Wired up in wireEvents().
+// ===== First-Run wizard reset =============================================
 const resetFirstRunBtn = $('reset-first-run');
 async function onResetFirstRunClick() {
   if (!resetFirstRunBtn) return;
@@ -220,27 +268,50 @@ async function onResetFirstRunClick() {
 }
 // =========================================================================
 
+// ---------------------------------------------------------------------------
+// Load / save settings
+// ---------------------------------------------------------------------------
+
 async function loadSettings() {
   const stored = await chrome.storage.local.get([
     KEYS.API_KEY,
+    KEYS.API_KEY_GEMINI,
+    KEYS.API_KEY_DEEPSEEK,
+    KEYS.API_KEY_OPENAI,
     KEYS.MODE,
     KEYS.MODEL,
     KEYS.SPEED,
     KEYS.AUTO_START,
+    KEYS.DEV_MODE,
+    KEYS.PROVIDER,
+    KEYS.FALLBACK_PROVIDER,
   ]);
 
-  apiKeyInput.value = typeof stored[KEYS.API_KEY] === 'string' ? stored[KEYS.API_KEY] : '';
+  // Provider selectors
+  const provider = VALID_PROVIDERS.has(stored[KEYS.PROVIDER])
+    ? stored[KEYS.PROVIDER]
+    : DEFAULTS.PROVIDER;
+  if (providerSelect) providerSelect.value = provider;
 
-  const mode = VALID_MODES.has(stored[KEYS.MODE]) ? stored[KEYS.MODE] : DEFAULTS.MODE;
-  setChecked(modeRadios(), mode);
+  const fbProvider = stored[KEYS.FALLBACK_PROVIDER] || DEFAULTS.FALLBACK_PROVIDER;
+  if (fallbackProviderSelect) fallbackProviderSelect.value = fbProvider;
 
+  // Model dropdown — populate for the active provider first
+  const storedModel = typeof stored[KEYS.MODEL] === 'string' && stored[KEYS.MODEL].trim().length > 0
+    ? stored[KEYS.MODEL]
+    : DEFAULTS.MODEL;
+  populateModelSelect(provider, storedModel);
+
+  // API keys
+  if (apiKeyInput)    apiKeyInput.value    = typeof stored[KEYS.API_KEY]          === 'string' ? stored[KEYS.API_KEY]          : '';
+  if (apiKeyGemini)   apiKeyGemini.value   = typeof stored[KEYS.API_KEY_GEMINI]   === 'string' ? stored[KEYS.API_KEY_GEMINI]   : '';
+  if (apiKeyDeepSeek) apiKeyDeepSeek.value = typeof stored[KEYS.API_KEY_DEEPSEEK] === 'string' ? stored[KEYS.API_KEY_DEEPSEEK] : '';
+  if (apiKeyOpenAI)   apiKeyOpenAI.value   = typeof stored[KEYS.API_KEY_OPENAI]   === 'string' ? stored[KEYS.API_KEY_OPENAI]   : '';
+
+  const mode  = VALID_MODES.has(stored[KEYS.MODE])   ? stored[KEYS.MODE]  : DEFAULTS.MODE;
   const speed = VALID_SPEEDS.has(stored[KEYS.SPEED]) ? stored[KEYS.SPEED] : DEFAULTS.SPEED;
+  setChecked(modeRadios(),  mode);
   setChecked(speedRadios(), speed);
-
-  modelInput.value =
-    typeof stored[KEYS.MODEL] === 'string' && stored[KEYS.MODEL].trim().length > 0
-      ? stored[KEYS.MODEL]
-      : DEFAULTS.MODEL;
 
   autoStartCheckbox.checked =
     typeof stored[KEYS.AUTO_START] === 'boolean' ? stored[KEYS.AUTO_START] : DEFAULTS.AUTO_START;
@@ -255,46 +326,70 @@ async function loadSettings() {
 }
 
 async function saveAll({ showToast } = { showToast: true }) {
-  const apiKey = apiKeyInput.value.trim();
-  const mode = getCheckedValue(modeRadios(), DEFAULTS.MODE);
-  const speed = getCheckedValue(speedRadios(), DEFAULTS.SPEED);
-  const modelRaw = modelInput.value.trim();
-  const model = modelRaw.length > 0 ? modelRaw : DEFAULTS.MODEL;
+  const provider   = providerSelect         ? providerSelect.value         : DEFAULTS.PROVIDER;
+  const fbProvider = fallbackProviderSelect ? fallbackProviderSelect.value : DEFAULTS.FALLBACK_PROVIDER;
+  const model      = modelSelect ? (modelSelect.value || DEFAULTS.MODEL) : DEFAULTS.MODEL;
+
+  const apiKey         = apiKeyInput    ? apiKeyInput.value.trim()    : '';
+  const apiKeyGeminiV  = apiKeyGemini   ? apiKeyGemini.value.trim()   : '';
+  const apiKeyDeepSeekV= apiKeyDeepSeek ? apiKeyDeepSeek.value.trim() : '';
+  const apiKeyOpenAIV  = apiKeyOpenAI   ? apiKeyOpenAI.value.trim()   : '';
+
+  const mode      = getCheckedValue(modeRadios(),  DEFAULTS.MODE);
+  const speed     = getCheckedValue(speedRadios(), DEFAULTS.SPEED);
   const autoStart = !!autoStartCheckbox.checked;
 
   await chrome.storage.local.set({
-    [KEYS.API_KEY]: apiKey,
-    [KEYS.MODE]: mode,
-    [KEYS.MODEL]: model,
-    [KEYS.SPEED]: speed,
-    [KEYS.AUTO_START]: autoStart,
-    [KEYS.DEV_MODE]: !!(devModeCheckbox && devModeCheckbox.checked),
+    [KEYS.API_KEY]:            apiKey,
+    [KEYS.API_KEY_GEMINI]:     apiKeyGeminiV,
+    [KEYS.API_KEY_DEEPSEEK]:   apiKeyDeepSeekV,
+    [KEYS.API_KEY_OPENAI]:     apiKeyOpenAIV,
+    [KEYS.PROVIDER]:           provider,
+    [KEYS.FALLBACK_PROVIDER]:  fbProvider,
+    [KEYS.MODEL]:              model,
+    [KEYS.MODE]:               mode,
+    [KEYS.SPEED]:              speed,
+    [KEYS.AUTO_START]:         autoStart,
+    [KEYS.DEV_MODE]:           !!(devModeCheckbox && devModeCheckbox.checked),
   });
 
   if (showToast) showSavedToast();
 }
 
 async function saveNonKeyOnly() {
-  // Auto-save everything except the API key field. Read current key from storage
-  // so an unsaved typed key is not committed.
-  const stored = await chrome.storage.local.get([KEYS.API_KEY]);
-  const apiKey = typeof stored[KEYS.API_KEY] === 'string' ? stored[KEYS.API_KEY] : '';
+  const stored = await chrome.storage.local.get([
+    KEYS.API_KEY, KEYS.API_KEY_GEMINI, KEYS.API_KEY_DEEPSEEK, KEYS.API_KEY_OPENAI,
+  ]);
+  const apiKey         = typeof stored[KEYS.API_KEY]          === 'string' ? stored[KEYS.API_KEY]          : '';
+  const apiKeyGeminiV  = typeof stored[KEYS.API_KEY_GEMINI]   === 'string' ? stored[KEYS.API_KEY_GEMINI]   : '';
+  const apiKeyDeepSeekV= typeof stored[KEYS.API_KEY_DEEPSEEK] === 'string' ? stored[KEYS.API_KEY_DEEPSEEK] : '';
+  const apiKeyOpenAIV  = typeof stored[KEYS.API_KEY_OPENAI]   === 'string' ? stored[KEYS.API_KEY_OPENAI]   : '';
 
-  const mode = getCheckedValue(modeRadios(), DEFAULTS.MODE);
-  const speed = getCheckedValue(speedRadios(), DEFAULTS.SPEED);
-  const modelRaw = modelInput.value.trim();
-  const model = modelRaw.length > 0 ? modelRaw : DEFAULTS.MODEL;
-  const autoStart = !!autoStartCheckbox.checked;
+  const provider   = providerSelect         ? providerSelect.value         : DEFAULTS.PROVIDER;
+  const fbProvider = fallbackProviderSelect ? fallbackProviderSelect.value : DEFAULTS.FALLBACK_PROVIDER;
+  const model      = modelSelect ? (modelSelect.value || DEFAULTS.MODEL) : DEFAULTS.MODEL;
+  const mode       = getCheckedValue(modeRadios(),  DEFAULTS.MODE);
+  const speed      = getCheckedValue(speedRadios(), DEFAULTS.SPEED);
+  const autoStart  = !!autoStartCheckbox.checked;
 
   await chrome.storage.local.set({
-    [KEYS.API_KEY]: apiKey,
-    [KEYS.MODE]: mode,
-    [KEYS.MODEL]: model,
-    [KEYS.SPEED]: speed,
-    [KEYS.AUTO_START]: autoStart,
-    [KEYS.DEV_MODE]: !!(devModeCheckbox && devModeCheckbox.checked),
+    [KEYS.API_KEY]:            apiKey,
+    [KEYS.API_KEY_GEMINI]:     apiKeyGeminiV,
+    [KEYS.API_KEY_DEEPSEEK]:   apiKeyDeepSeekV,
+    [KEYS.API_KEY_OPENAI]:     apiKeyOpenAIV,
+    [KEYS.PROVIDER]:           provider,
+    [KEYS.FALLBACK_PROVIDER]:  fbProvider,
+    [KEYS.MODEL]:              model,
+    [KEYS.MODE]:               mode,
+    [KEYS.SPEED]:              speed,
+    [KEYS.AUTO_START]:         autoStart,
+    [KEYS.DEV_MODE]:           !!(devModeCheckbox && devModeCheckbox.checked),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Test connection — per provider
+// ---------------------------------------------------------------------------
 
 function startTestUiInFlight() {
   testKeyBtn.disabled = true;
@@ -325,32 +420,35 @@ function endTestUiInFlight() {
   updateTestButtonEnabled();
 }
 
+/** Resolve the API key for the currently-selected provider from the UI inputs. */
+function getActiveKeyFromUi() {
+  const provider = providerSelect ? providerSelect.value : 'anthropic';
+  if (provider === 'gemini')   return (apiKeyGemini   && apiKeyGemini.value.trim())   || (apiKeyInput && apiKeyInput.value.trim()) || '';
+  if (provider === 'deepseek') return (apiKeyDeepSeek && apiKeyDeepSeek.value.trim()) || (apiKeyInput && apiKeyInput.value.trim()) || '';
+  if (provider === 'openai')   return (apiKeyOpenAI   && apiKeyOpenAI.value.trim())   || (apiKeyInput && apiKeyInput.value.trim()) || '';
+  return (apiKeyInput && apiKeyInput.value.trim()) || '';
+}
+
 async function testConnection() {
-  // Guard against concurrent invocations: if a previous test is still in
-  // flight, cancel it and continue with a fresh one.
   if (testAbort) {
     try { testAbort.abort('superseded'); } catch {}
     testAbort = null;
   }
-
   clearTestResult();
-  const apiKey = apiKeyInput.value.trim();
+
+  const apiKey   = getActiveKeyFromUi();
   if (!apiKey) return;
 
-  const model = modelInput.value.trim() || DEFAULTS.MODEL;
+  const provider = providerSelect ? providerSelect.value : 'anthropic';
+  const model    = modelSelect ? (modelSelect.value || DEFAULTS.MODEL) : DEFAULTS.MODEL;
 
   const localAbort = new AbortController();
   testAbort = localAbort;
 
-  // Soft timeout: triggers AbortController so fetch rejects cleanly.
   const softTimer = setTimeout(() => {
     try { localAbort.abort('timeout'); } catch {}
   }, TEST_TIMEOUT_MS);
 
-  // Hard timeout: independent of fetch — if fetch never resolves AND
-  // AbortController doesn't cause a rejection (Chrome quirk / hung body
-  // reader), force-clear the UI after a buffer past the soft timeout so
-  // the user is never stuck staring at a spinner.
   let hardCleared = false;
   const hardTimer = setTimeout(() => {
     hardCleared = true;
@@ -362,72 +460,112 @@ async function testConnection() {
 
   startTestUiInFlight();
 
+  const testFn = PROVIDER_TEST[provider] || testAnthropic;
   try {
-    let response;
-    try {
-      response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 16,
-          messages: [{ role: 'user', content: 'ping' }],
-        }),
-        signal: localAbort.signal,
-      });
-    } catch (err) {
-      if (hardCleared) return; // Hard-timeout already wrote the result.
-      if (err && err.name === 'AbortError') {
-        // localAbort.signal.reason may not be supported on older Chromes;
-        // fall back to a string check.
-        const reason = localAbort.signal && localAbort.signal.reason;
-        if (reason === 'timeout' || reason === 'hard_timeout') {
-          showTestResult(false, tt('options.apiKey.testTimeout', { seconds: TEST_TIMEOUT_MS / 1000 }));
-        } else if (reason === 'superseded') {
-          // Silently swallow — a newer test has taken over.
-          return;
-        } else {
-          showTestResult(false, tt('options.apiKey.testCancelled'));
-        }
-      } else {
-        showTestResult(false, tt('options.apiKey.networkError', { message: err && err.message ? err.message : 'unknown' }));
-      }
-      return;
-    }
-
-    if (hardCleared) return;
-
-    if (response.ok) {
-      showTestResult(true, tt('common.ok'));
-      return;
-    }
-
-    // Best-effort body read with its own short timeout — never block the UI on it.
-    let detail = '';
-    try {
-      const bodyTimeout = new Promise((_, rej) => setTimeout(() => rej(new Error('body_timeout')), 3000));
-      const data = await Promise.race([response.json(), bodyTimeout]);
-      if (data && data.error && typeof data.error.message === 'string') {
-        detail = data.error.message;
-      }
-    } catch (_) {
-      // ignore — body read timed out or wasn't JSON
-    }
-    const trimmedDetail = detail ? ` — ${detail.slice(0, 120)}` : '';
-    showTestResult(false, tt('options.apiKey.failedStatus', { status: response.status }) + trimmedDetail);
+    await testFn(apiKey, model, localAbort, hardCleared);
   } finally {
     clearTimeout(softTimer);
     clearTimeout(hardTimer);
-    if (!hardCleared) {
-      endTestUiInFlight();
-    }
+    if (!hardCleared) endTestUiInFlight();
     if (testAbort === localAbort) testAbort = null;
   }
+}
+
+async function testAnthropic(apiKey, model, localAbort) {
+  let response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: model || 'claude-haiku-4-5-20251001',
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'ping' }],
+      }),
+      signal: localAbort.signal,
+    });
+  } catch (err) {
+    return _handleTestFetchError(err, localAbort);
+  }
+  return _handleTestResponse(response);
+}
+
+async function testGemini(apiKey, model, localAbort) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || 'gemini-2.0-flash')}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
+        generationConfig: { maxOutputTokens: 8, temperature: 0 },
+      }),
+      signal: localAbort.signal,
+    });
+  } catch (err) {
+    return _handleTestFetchError(err, localAbort);
+  }
+  return _handleTestResponse(response);
+}
+
+async function testOpenAICompat(endpoint, defaultModel, apiKey, model, localAbort) {
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: model || defaultModel,
+        max_tokens: 8,
+        messages: [{ role: 'user', content: 'ping' }],
+      }),
+      signal: localAbort.signal,
+    });
+  } catch (err) {
+    return _handleTestFetchError(err, localAbort);
+  }
+  return _handleTestResponse(response);
+}
+
+function _handleTestFetchError(err, localAbort) {
+  if (err && err.name === 'AbortError') {
+    const reason = localAbort.signal && localAbort.signal.reason;
+    if (reason === 'timeout' || reason === 'hard_timeout') {
+      showTestResult(false, tt('options.apiKey.testTimeout', { seconds: TEST_TIMEOUT_MS / 1000 }));
+    } else if (reason === 'superseded') {
+      // swallow
+    } else {
+      showTestResult(false, tt('options.apiKey.testCancelled'));
+    }
+  } else {
+    showTestResult(false, tt('options.apiKey.networkError', { message: err && err.message ? err.message : 'unknown' }));
+  }
+}
+
+async function _handleTestResponse(response) {
+  if (response.ok) {
+    showTestResult(true, tt('common.ok'));
+    return;
+  }
+  let detail = '';
+  try {
+    const bodyTimeout = new Promise((_, rej) => setTimeout(() => rej(new Error('body_timeout')), 3000));
+    const data = await Promise.race([response.json(), bodyTimeout]);
+    if (data && data.error && typeof data.error.message === 'string') {
+      detail = data.error.message;
+    }
+  } catch (_) { /* ignore */ }
+  const trimmedDetail = detail ? ` — ${detail.slice(0, 120)}` : '';
+  showTestResult(false, tt('options.apiKey.failedStatus', { status: response.status }) + trimmedDetail);
 }
 
 function cancelTest() {
@@ -442,34 +580,93 @@ function toggleKeyVisibility() {
     apiKeyInput.type = 'password';
     toggleKeyBtn.setAttribute('aria-pressed', 'false');
     toggleKeyBtn.setAttribute('aria-label', 'Show API key');
-    toggleKeyIcon.innerHTML = '&#128065;'; // eye
+    toggleKeyIcon.innerHTML = '&#128065;';
   } else {
     apiKeyInput.type = 'text';
     toggleKeyBtn.setAttribute('aria-pressed', 'true');
     toggleKeyBtn.setAttribute('aria-label', 'Hide API key');
-    toggleKeyIcon.textContent = '✕'; // ×
+    toggleKeyIcon.textContent = '✕';
   }
 }
+
+// Generic show/hide for the provider-scoped key inputs.
+function toggleProviderKeyVisibility(btn) {
+  const targetId = btn.dataset.target;
+  const input = document.getElementById(targetId);
+  if (!input) return;
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  btn.setAttribute('aria-pressed', showing ? 'false' : 'true');
+  const icon = btn.querySelector('.toggle-key-icon');
+  if (icon) icon.innerHTML = showing ? '&#128065;' : '✕';
+}
+
+// ---------------------------------------------------------------------------
+// Event wiring
+// ---------------------------------------------------------------------------
 
 let wireEventsCalled = false;
 function wireEvents() {
   if (wireEventsCalled) return;
   wireEventsCalled = true;
-  apiKeyInput.addEventListener('input', () => {
-    updateTestButtonEnabled();
-    updateKeyWarning();
-    clearTestResult();
+
+  // Provider selector changes: repopulate model dropdown, update test button.
+  if (providerSelect) {
+    providerSelect.addEventListener('change', () => {
+      const provider = providerSelect.value;
+      const curModel = modelSelect ? modelSelect.value : '';
+      populateModelSelect(provider, curModel);
+      updateTestButtonEnabled();
+      saveNonKeyOnly();
+    });
+  }
+
+  if (fallbackProviderSelect) {
+    fallbackProviderSelect.addEventListener('change', saveNonKeyOnly);
+  }
+
+  if (modelSelect) {
+    modelSelect.addEventListener('change', saveNonKeyOnly);
+  }
+
+  // API key inputs
+  if (apiKeyInput) {
+    apiKeyInput.addEventListener('input', () => {
+      updateTestButtonEnabled();
+      updateKeyWarning();
+      clearTestResult();
+    });
+  }
+  const providerKeyInputs = [apiKeyGemini, apiKeyDeepSeek, apiKeyOpenAI];
+  for (const inp of providerKeyInputs) {
+    if (inp) {
+      inp.addEventListener('input', () => {
+        updateTestButtonEnabled();
+        clearTestResult();
+      });
+    }
+  }
+
+  // Toggle visibility for all provider-scoped keys.
+  document.querySelectorAll('.toggle-key-btn').forEach((btn) => {
+    btn.addEventListener('click', () => toggleProviderKeyVisibility(btn));
   });
 
-  toggleKeyBtn.addEventListener('click', toggleKeyVisibility);
+  if (toggleKeyBtn) {
+    toggleKeyBtn.addEventListener('click', toggleKeyVisibility);
+  }
 
-  saveKeyBtn.addEventListener('click', async () => {
-    await saveAll({ showToast: true });
-  });
+  if (saveKeyBtn) {
+    saveKeyBtn.addEventListener('click', async () => {
+      await saveAll({ showToast: true });
+    });
+  }
 
-  testKeyBtn.addEventListener('click', () => {
-    testConnection();
-  });
+  if (testKeyBtn) {
+    testKeyBtn.addEventListener('click', () => {
+      testConnection();
+    });
+  }
 
   if (cancelTestBtn) {
     cancelTestBtn.addEventListener('click', cancelTest);
@@ -488,8 +685,6 @@ function wireEvents() {
         try {
           globalThis.__AT_I18N__.apply(document);
           if (langSelect) langSelect.value = lang;
-          // Re-render the dev log so timestamps/labels (entries themselves
-          // are technical and stay raw, but the stats line uses {count}).
           if (devLogStats) {
             const count = devLogList ? devLogList.children.length : 0;
             devLogStats.textContent = tt('options.dev.entries', { count });
@@ -499,27 +694,24 @@ function wireEvents() {
     }
   } catch (_e) {}
 
-  // ----- Maintenance -----
+  // Maintenance
   if (recheckRecipesBtn) {
     recheckRecipesBtn.addEventListener('click', onRecheckRecipesClick);
   }
-  // sec8-firstrun: wire the "Reset first-run wizard" button. Clearing the
-  // storage keys causes the wizard to re-appear on the next sidepanel open.
   if (resetFirstRunBtn) {
     resetFirstRunBtn.addEventListener('click', onResetFirstRunClick);
   }
 
-  // ----- Dev mode + log viewer -----
+  // Dev mode + log viewer
   if (devModeCheckbox) {
     devModeCheckbox.addEventListener('change', saveNonKeyOnly);
   }
   if (devRefreshBtn) devRefreshBtn.addEventListener('click', () => refreshDevLog());
-  if (devClearBtn) devClearBtn.addEventListener('click', () => clearDevLog());
+  if (devClearBtn)   devClearBtn.addEventListener('click',   () => clearDevLog());
   try {
     chrome.runtime.onMessage.addListener((msg) => {
       if (!msg || typeof msg !== 'object') return;
       if (msg.type === MSG_DEV_LOG_PUSH && msg.entry) {
-        // Live append (without full refresh).
         if (devAutoRefresh && devAutoRefresh.checked) {
           appendDevLogEntry(msg.entry);
         }
@@ -529,17 +721,10 @@ function wireEvents() {
     });
   } catch (_e) { /* no-op */ }
 
-  // Auto-save for radios, model input, and checkbox (but not API key).
-  for (const el of modeRadios()) {
-    el.addEventListener('change', saveNonKeyOnly);
-  }
-  for (const el of speedRadios()) {
-    el.addEventListener('change', saveNonKeyOnly);
-  }
+  // Auto-save for radios, checkbox.
+  for (const el of modeRadios())  el.addEventListener('change', saveNonKeyOnly);
+  for (const el of speedRadios()) el.addEventListener('change', saveNonKeyOnly);
   autoStartCheckbox.addEventListener('change', saveNonKeyOnly);
-  modelInput.addEventListener('change', saveNonKeyOnly);
-  // Save model on blur too, in case user tabs away without firing change.
-  modelInput.addEventListener('blur', saveNonKeyOnly);
 }
 
 // ---------- Dev log viewer ------------------------------------------------
@@ -569,7 +754,6 @@ function appendDevLogEntry(entry) {
   if (!devLogList || !devLogEmpty || !devLogStats) return;
   devLogEmpty.hidden = true;
   devLogList.appendChild(buildDevLogItem(entry));
-  // bump count display
   const count = devLogList.children.length;
   devLogStats.textContent = tt('options.dev.entries', { count });
   devLogList.scrollTop = devLogList.scrollHeight;
@@ -624,9 +808,7 @@ async function refreshDevLog() {
     if (resp && resp.ok && Array.isArray(resp.entries)) {
       renderDevLogList(resp.entries);
     }
-  } catch (_e) {
-    // background not awake; that's OK
-  }
+  } catch (_e) { /* background not awake */ }
 }
 
 async function clearDevLog() {
@@ -637,11 +819,14 @@ async function clearDevLog() {
   renderDevLogList([]);
 }
 
+// ---------------------------------------------------------------------------
+// Bootstrap
+// ---------------------------------------------------------------------------
+
 let bootstrapped = false;
 async function bootstrap() {
   if (bootstrapped) return;
   bootstrapped = true;
-  // Wait for i18n storage read, then apply translations to all data-i18n nodes.
   try {
     if (globalThis.__AT_I18N__ && globalThis.__AT_I18N__.ready) {
       await globalThis.__AT_I18N__.ready;
@@ -659,7 +844,6 @@ async function bootstrap() {
   refreshDevLog();
 }
 
-// Run bootstrap whether DOMContentLoaded has already fired or not.
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
 } else {

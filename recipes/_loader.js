@@ -11,7 +11,13 @@ import { REQUIRED_FIELDS, VALID_CATEGORIES, VALID_DIFFICULTIES } from './_types.
 import { recipe as githubCreateAccount } from './github-create-account.js';
 import { recipe as githubAddSshKey } from './github-add-ssh-key.js';
 import { recipe as anthropicIssueApiKey } from './anthropic-issue-api-key.js';
+import { recipe as chatworkAddTask } from './chatwork-add-task.js';
+import { recipe as chatworkCreateGroup } from './chatwork-create-group.js';
+import { recipe as kintoneAppNavigation } from './kintone-app-navigation.js';
+import { recipe as kintoneCreateAppRecord } from './kintone-create-app-record.js';
+import { recipe as lstepScenarioWalkthrough } from './lstep-scenario-walkthrough.js';
 import { recipe as openaiIssueApiKey } from './openai-issue-api-key.js';
+import { recipe as slackCreateChannel } from './slack-create-channel.js';
 import { recipe as supabaseCreateProject } from './supabase-create-project.js';
 import { recipe as vercelFirstDeploy } from './vercel-first-deploy.js';
 import { recipe as cursorInitialSignin } from './cursor-initial-signin.js';
@@ -21,7 +27,13 @@ const ALL_RECIPES = [
   githubCreateAccount,
   githubAddSshKey,
   anthropicIssueApiKey,
+  chatworkAddTask,
+  chatworkCreateGroup,
+  kintoneAppNavigation,
+  kintoneCreateAppRecord,
+  lstepScenarioWalkthrough,
   openaiIssueApiKey,
+  slackCreateChannel,
   supabaseCreateProject,
   vercelFirstDeploy,
   cursorInitialSignin,

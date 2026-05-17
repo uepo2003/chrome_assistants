@@ -18,6 +18,7 @@
         "common/messages.js",
         "content/cursor.js",
         "content/dom-analyzer.js",
+        "content/selector-cache.js",
         "content/action-executor.js",
         "content/rules.js",
         "content/main.js"

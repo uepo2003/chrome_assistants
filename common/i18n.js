@@ -240,6 +240,28 @@
       'pill.complete': 'Done',
       'pill.error': 'Error',
 
+      // ----- run-mode toggle (Auto vs Guide) -----
+      'runMode.label': 'How should I help?',
+      'runMode.auto': 'Do it for me',
+      'runMode.autoDesc': 'I click and type for you automatically.',
+      'runMode.guide': 'Guide me',
+      'runMode.guideDesc': "I point at the next step and you do it yourself.",
+      'runMode.ariaGroup': 'Run mode',
+      'runMode.next': 'Next',
+      'runMode.nextAria': "I did it — continue to the next step",
+
+      // ----- guide-mode cursor narration -----
+      'guide.clickHere': 'Click here',
+      'guide.typeHere': 'Type here, then continue',
+      'guide.typeThis': 'Type this here:',
+      'guide.narrate.click': 'Click the highlighted element',
+      'guide.narrate.type': 'Type into the highlighted field',
+      'guide.waitingFor': 'Waiting for you',
+      'guide.waitingStill': 'Still waiting for you — do the highlighted step, or press Next.',
+      'guide.timedOut': 'Taking a while. Finish the step yourself, then press Next.',
+      'guide.youDidIt': 'Nice — done. Moving on.',
+      'cache.usedCached': 'Used a remembered shortcut',
+
       // ----- errors (new) -----
       'error.recipeUnavailable': 'This recipe is currently unavailable.',
       'error.recipeMissingApiKey': 'Add your Anthropic API key in settings to run this recipe.',
@@ -460,6 +482,28 @@
       'pill.paused': '一時停止',
       'pill.complete': '完了',
       'pill.error': 'エラー',
+
+      // ----- run-mode toggle (Auto vs Guide) -----
+      'runMode.label': 'どう手伝いますか?',
+      'runMode.auto': '自動でやって',
+      'runMode.autoDesc': 'クリックや入力を自動で代行します。',
+      'runMode.guide': 'やり方を教えて',
+      'runMode.guideDesc': '次の操作を指し示すので、ご自身で操作してください。',
+      'runMode.ariaGroup': '実行モード',
+      'runMode.next': '次へ',
+      'runMode.nextAria': 'やりました — 次のステップへ進む',
+
+      // ----- guide-mode cursor narration -----
+      'guide.clickHere': 'ここをクリック',
+      'guide.typeHere': 'ここに入力して進んでください',
+      'guide.typeThis': 'ここに入力:',
+      'guide.narrate.click': 'ハイライトされた要素をクリック',
+      'guide.narrate.type': 'ハイライトされた欄に入力',
+      'guide.waitingFor': 'あなたの操作を待っています',
+      'guide.waitingStill': 'まだお待ちしています — ハイライトの操作を行うか「次へ」を押してください。',
+      'guide.timedOut': '少し時間がかかっています。ご自身で操作してから「次へ」を押してください。',
+      'guide.youDidIt': 'できました — 次に進みます。',
+      'cache.usedCached': '記憶したショートカットを使いました',
 
       // ----- errors (new) -----
       'error.recipeUnavailable': 'このレシピは現在利用できません。',

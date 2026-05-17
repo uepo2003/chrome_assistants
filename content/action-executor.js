@@ -4,6 +4,20 @@
  * ensureInView). Driven by main.js once the rule / AI layer picks an action.
  *
  * Exposes globalThis.__AT__.action.
+ *
+ * Team B note — selector-cache integration hook:
+ *   After a successful click or type, the returned Promise resolves with
+ *   { executed: true, el: <Element> } so Team C (main.js) can do:
+ *
+ *     dispatchAction(act).then(function(result) {
+ *       if (result && result.executed && result.el) {
+ *         var sel = __AT__.dom.selectorFor(result.el);
+ *         if (sel) __AT__.domCache.remember(recipeId, step.id, intent, sel);
+ *       }
+ *     });
+ *
+ *   Callers that only test `result.executed` continue to work unchanged.
+ *   scroll continues to resolve { executed: true } (no stable element).
  */
 (function () {
   "use strict";
@@ -132,7 +146,7 @@
 
   function clickAction(el, opts) {
     opts = opts || {};
-    if (!el) return Promise.resolve();
+    if (!el) return Promise.resolve({ executed: false });
     var cursorMs = (typeof opts.cursorMs === "number") ? opts.cursorMs : getSpeed().cursorMs;
     var label = opts.label || "Clicking…";
     var cursor = getCursor();
@@ -150,12 +164,14 @@
         return c;
       })
       .then(function (c) {
-        if (!el || !el.isConnected || !c) return;
+        if (!el || !el.isConnected || !c) return { executed: false };
         // Lower-level events first so frameworks listening for mousedown/up
         // (e.g. drag-aware UIs) see them, then the high-level click.
         dispatchMouse(el, "mousedown", c.x, c.y);
         dispatchMouse(el, "mouseup", c.x, c.y);
         try { el.click(); } catch (e) { dbg("el.click failed", e); }
+        // Return el so main.js can compute selectorFor(el) and remember it.
+        return { executed: true, el: el };
       });
   }
 
@@ -259,9 +275,11 @@
         return p;
       })
       .then(function () {
-        if (!el || !el.isConnected) return;
+        if (!el || !el.isConnected) return { executed: false };
         var tag = (el.tagName || "").toLowerCase();
         if (tag === "input" || tag === "textarea") dispatchChange(el);
+        // Return el so main.js can compute selectorFor(el) and remember it.
+        return { executed: true, el: el };
       });
   }
 

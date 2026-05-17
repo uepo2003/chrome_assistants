@@ -39,6 +39,12 @@
   const MSG_PAUSED_FOR_HUMAN =
     (MSG && MSG.PAUSED_FOR_HUMAN) || "AT_PAUSED_FOR_HUMAN";
   const MSG_RESUME = (MSG && MSG.RESUME) || "AT_RESUME";
+  // Guide mode (BtoB pivot): sidepanel -> content "user did it / next".
+  const MSG_GUIDE_ADVANCE = (MSG && MSG.GUIDE_ADVANCE) || "AT_GUIDE_ADVANCE";
+  // Storage key for the Auto/Guide run-mode toggle (Team A added this to
+  // STORAGE_KEYS as RUN_MODE). Fall back to the literal if absent.
+  const RUN_MODE_KEY =
+    (globalThis.__AT_KEYS__ && globalThis.__AT_KEYS__.RUN_MODE) || "at_run_mode";
 
   const CATEGORIES = ["first-setup", "connect", "deploy", "account", "key-issue"];
 
@@ -71,6 +77,9 @@
     currentRecipe: null,    // recipe being shown in detail/preview
     runningRecipe: null,    // recipe whose run is in progress
     lastSummaryByStep: new Map(),
+
+    // Run mode (Auto vs Guide). Persisted to chrome.storage.local.
+    runModeChoice: "auto",  // 'auto' | 'guide'
   };
 
   // ----------------------------------------------------------- dom helpers --
@@ -128,6 +137,11 @@
     pausedPanel: $("pausedPanel"),
     pausedWhy: $("pausedWhy"),
     resumeBtn: $("resumeBtn"),
+    guideNextBtn: $("guideNextBtn"),
+
+    // Run-mode toggle (Auto vs Guide)
+    runModeAuto: $("runModeAuto"),
+    runModeGuide: $("runModeGuide"),
 
     // Upgrade banner
     upgradeBanner: $("upgradeBanner"),
@@ -201,6 +215,18 @@
 
     const showStop = s === "running" || s === "waiting-user" || s === "paused";
     if (dom.stopBtn) dom.stopBtn.hidden = !showStop;
+
+    // Guide-mode "Next" is a manual fallback the user can always tap while a
+    // guided run is in flight (in case the page swallows their click).
+    if (dom.guideNextBtn) {
+      const guideActive =
+        state.runModeChoice === "guide" &&
+        (s === "running" || s === "waiting-user");
+      dom.guideNextBtn.hidden = !guideActive;
+    }
+
+    // The run-mode toggle must not change mid-run.
+    setRunModeToggleEnabled(s === "idle" || s === "done" || s === "aborted");
 
     const disableInput =
       s === "planning" ||
@@ -1132,6 +1158,55 @@
     setRunState("running");
   }
 
+  // ----------------------------------------------------- run-mode toggle ----
+  function setRunModeToggleEnabled(enabled) {
+    if (dom.runModeAuto) dom.runModeAuto.disabled = !enabled;
+    if (dom.runModeGuide) dom.runModeGuide.disabled = !enabled;
+    const fs = document.getElementById("runModeToggle");
+    if (fs) fs.classList.toggle("runmode--locked", !enabled);
+  }
+
+  function applyRunModeToUI() {
+    const guide = state.runModeChoice === "guide";
+    if (dom.runModeAuto) dom.runModeAuto.checked = !guide;
+    if (dom.runModeGuide) dom.runModeGuide.checked = guide;
+  }
+
+  function persistRunMode(mode) {
+    state.runModeChoice = mode === "guide" ? "guide" : "auto";
+    try {
+      const obj = {};
+      obj[RUN_MODE_KEY] = state.runModeChoice;
+      chrome.storage.local.set(obj, () => { void chrome.runtime.lastError; });
+    } catch (_e) { /* best-effort */ }
+  }
+
+  function loadRunMode() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get(RUN_MODE_KEY, (out) => {
+          void chrome.runtime.lastError;
+          const v = out && out[RUN_MODE_KEY];
+          state.runModeChoice = v === "guide" ? "guide" : "auto";
+          applyRunModeToUI();
+          resolve();
+        });
+      } catch (_e) {
+        applyRunModeToUI();
+        resolve();
+      }
+    });
+  }
+
+  function onRunModeChange(e) {
+    const v = e && e.target && e.target.value;
+    persistRunMode(v === "guide" ? "guide" : "auto");
+  }
+
+  function onGuideNext() {
+    send(MSG_GUIDE_ADVANCE, {});
+  }
+
   function onEditGoal() {
     send(MSG.PLAN_CANCELLED, {});
     clearChat();
@@ -1455,6 +1530,12 @@
     if (dom.stopBtn) dom.stopBtn.addEventListener("click", onStop);
     if (dom.liveStopBtn) dom.liveStopBtn.addEventListener("click", onStop);
     if (dom.resumeBtn) dom.resumeBtn.addEventListener("click", onResume);
+    if (dom.guideNextBtn) dom.guideNextBtn.addEventListener("click", onGuideNext);
+
+    // Run-mode toggle (Auto vs Guide).
+    if (dom.runModeAuto) dom.runModeAuto.addEventListener("change", onRunModeChange);
+    if (dom.runModeGuide) dom.runModeGuide.addEventListener("change", onRunModeChange);
+    loadRunMode();
 
     // Catalog search (debounced; well under 50ms perceptible latency).
     if (dom.catalogSearch) {

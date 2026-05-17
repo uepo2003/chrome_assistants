@@ -5,14 +5,21 @@
  * way to resolve a snapshot id back to a live Element.
  *
  * Exposes globalThis.__AT__.dom with snapshot(), resolve(id), centerOf(el),
- * describe(el).
+ * describe(el), selectorFor(el), resolveSelector(sel).
+ *
+ * Smart compression (Team B): MAX_TEXT_LEN tightened to 80 chars (prompt
+ * builder caps at 120; we pre-trim earlier), duplicate elements with
+ * identical tag+role+text are deduped keeping the top-ranked one, and
+ * disabled/aria-disabled controls are skipped entirely.
  */
 (function () {
   "use strict";
 
   // ----- constants ---------------------------------------------------------
   var MAX_INTERACTIVES = 40;
-  var MAX_TEXT_LEN = 140;
+  // Pre-trim text to 80 chars — the prompt builder caps at 120 but we send
+  // less so the JSON payload is smaller before it even reaches the prompt.
+  var MAX_TEXT_LEN = 80;
 
   // Tags / selectors we treat as interactive.
   var INTERACTIVE_SELECTOR = [
@@ -255,12 +262,19 @@
     } catch (e) {}
 
     var seen = new Set();
+    // Dedup key: tag+role+text. Skip elements whose fingerprint was already
+    // added (keep only the first / highest-ranked occurrence after sort).
+    var dedupSeen = new Set();
     var items = [];
 
     function consider(el) {
       if (!el || seen.has(el)) return;
       seen.add(el);
       if (!isVisible(el, vp)) return;
+
+      // Skip disabled / aria-disabled controls — they can't be acted upon.
+      if (el.disabled) return;
+      if (el.getAttribute && el.getAttribute("aria-disabled") === "true") return;
 
       var tr = classifyTagRole(el);
       var r = rectOf(el);
@@ -280,6 +294,13 @@
         (el.hasAttribute && (el.hasAttribute("data-tour") || el.hasAttribute("data-onboarding"))) || false;
       var hasTutorialClass = TUTORIAL_CLASS_RE.test(cls);
       var textMatchesProgress = PROGRESS_TEXT_RE.test(text || "");
+
+      // Dedup: skip elements with identical tag+role+text (same fingerprint).
+      // Elements in overlays are always kept (they may be visually different
+      // but share label text like "OK").
+      var fingerprint = (tr.tag || "") + "|" + (tr.role || "") + "|" + (text || "") + "|" + (placeholder || "");
+      if (!inOverlay && dedupSeen.has(fingerprint)) return;
+      dedupSeen.add(fingerprint);
 
       items.push({
         _el: el,
@@ -355,6 +376,136 @@
     return el;
   }
 
+  // ----- selector generation (Team B — Stagehand-style caching support) ----
+
+  /**
+   * selectorFor(el) — returns a stable CSS selector string for `el`.
+   *
+   * Priority (most stable → least stable):
+   *   1. #id  (when the id is unique in the document and looks non-dynamic)
+   *   2. [data-testid], [data-cy], [data-qa], [data-id] attributes
+   *   3. [name] attribute on form elements
+   *   4. [aria-label] attribute (quoted, length-capped)
+   *   5. Short structural path using tag + :nth-of-type (max 4 ancestors)
+   *
+   * Never throws; returns "" on failure.
+   */
+  function selectorFor(el) {
+    if (!el || !el.tagName) return "";
+    try {
+      var tag = el.tagName.toLowerCase();
+
+      // 1. Unique, non-dynamic #id
+      var id = el.getAttribute && el.getAttribute("id");
+      if (id && id.trim() && !/^\d/.test(id) && !/[^a-zA-Z0-9_\-]/.test(id)) {
+        var sel1 = "#" + id;
+        try {
+          var hits = document.querySelectorAll(sel1);
+          if (hits.length === 1) return sel1;
+        } catch (e) {}
+      }
+
+      // 2. data-* test/qa attributes (very stable in SaaS UIs)
+      var DATA_ATTRS = ["data-testid", "data-cy", "data-qa", "data-id", "data-onboarding", "data-tour"];
+      for (var d = 0; d < DATA_ATTRS.length; d++) {
+        var val = el.getAttribute && el.getAttribute(DATA_ATTRS[d]);
+        if (val && val.trim()) {
+          var sel2 = tag + "[" + DATA_ATTRS[d] + "=" + JSON.stringify(val) + "]";
+          try {
+            var hits2 = document.querySelectorAll(sel2);
+            if (hits2.length === 1) return sel2;
+          } catch (e) {}
+        }
+      }
+
+      // 3. [name] on form controls
+      var name = (tag === "input" || tag === "textarea" || tag === "select" || tag === "button") &&
+                 el.getAttribute && el.getAttribute("name");
+      if (name && name.trim()) {
+        var sel3 = tag + "[name=" + JSON.stringify(name) + "]";
+        try {
+          var hits3 = document.querySelectorAll(sel3);
+          if (hits3.length === 1) return sel3;
+        } catch (e) {}
+      }
+
+      // 4. [aria-label] (cap to 60 chars to keep selector manageable)
+      var aria = el.getAttribute && el.getAttribute("aria-label");
+      if (aria && aria.trim()) {
+        var ariaVal = aria.trim().length > 60 ? aria.trim().slice(0, 60) : aria.trim();
+        var sel4 = tag + '[aria-label="' + ariaVal.replace(/"/g, '\\"') + '"]';
+        try {
+          var hits4 = document.querySelectorAll(sel4);
+          if (hits4.length === 1) return sel4;
+        } catch (e) {}
+      }
+
+      // 5. Short structural path: up to 4 ancestors, :nth-of-type
+      var parts = [];
+      var node = el;
+      var depth = 0;
+      while (node && node !== document.documentElement && depth < 4) {
+        var nodeTag = node.tagName.toLowerCase();
+        var parent = node.parentElement;
+        if (!parent) break;
+        var siblings = parent.children;
+        var sameTag = 0;
+        var myIndex = 1;
+        for (var s = 0; s < siblings.length; s++) {
+          if (siblings[s].tagName && siblings[s].tagName.toLowerCase() === nodeTag) {
+            sameTag++;
+            if (siblings[s] === node) myIndex = sameTag;
+          }
+        }
+        if (sameTag > 1) {
+          parts.unshift(nodeTag + ":nth-of-type(" + myIndex + ")");
+        } else {
+          parts.unshift(nodeTag);
+        }
+        // If the parent has a stable id or data attr, anchor there and stop.
+        var parentId = parent.getAttribute && parent.getAttribute("id");
+        if (parentId && parentId.trim() && !/^\d/.test(parentId) && !/[^a-zA-Z0-9_\-]/.test(parentId)) {
+          parts.unshift("#" + parentId);
+          break;
+        }
+        node = parent;
+        depth++;
+      }
+      if (parts.length > 0) {
+        var structSel = parts.join(" > ");
+        try {
+          var hits5 = document.querySelectorAll(structSel);
+          if (hits5.length === 1) return structSel;
+        } catch (e) {}
+        // Even if not unique, return the structural path as best-effort.
+        return structSel;
+      }
+    } catch (e) {
+      dbg("selectorFor threw:", e);
+    }
+    return "";
+  }
+
+  /**
+   * resolveSelector(selectorString) — querySelector + visibility check.
+   * Returns the live Element if found AND visible, or null.
+   * Never throws into callers.
+   */
+  function resolveSelector(selectorString) {
+    if (!selectorString || typeof selectorString !== "string") return null;
+    try {
+      var el = document.querySelector(selectorString);
+      if (!el) return null;
+      if (!el.isConnected) return null;
+      var vp = getViewport();
+      if (!isVisible(el, vp)) return null;
+      return el;
+    } catch (e) {
+      dbg("resolveSelector threw:", e);
+      return null;
+    }
+  }
+
   // ----- expose ------------------------------------------------------------
   globalThis.__AT__ = globalThis.__AT__ || {};
   globalThis.__AT__.dom = {
@@ -362,5 +513,7 @@
     resolve: resolve,
     centerOf: centerOf,
     describe: describe,
+    selectorFor: selectorFor,
+    resolveSelector: resolveSelector,
   };
 })();

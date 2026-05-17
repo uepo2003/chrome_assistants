@@ -1,24 +1,54 @@
-/* Auto-Tutorial Extension — virtual cursor styles.
+/* Auto-Tutorial Extension — virtual cursor styles ("second cursor").
  * Keep minimal: positioning/sizing are set inline by cursor.js so JS can
- * drive transforms with rAF. Only base shape, ripple keyframes, and label
- * cosmetics live here so they don't re-parse on every load. */
+ * drive transforms with rAF. Only base shape, ripple/ring keyframes, and
+ * label cosmetics live here so they don't re-parse on every load.
+ *
+ * Design intent (BtoB pivot): the cursor must read as a friendly AI guide
+ * sitting next to the user — large, high-contrast accent, an obvious
+ * pointer affordance, and a readable label bubble on both light and dark
+ * pages. pointer-events:none everywhere so it never blocks real input. */
 
 .at-cursor {
   position: fixed;
   top: 0;
   left: 0;
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px; /* center on (x,y) via translate */
-  border-radius: 50%;
-  background: rgba(239, 68, 68, 0.85); /* #ef4444 @ ~85% */
-  border: 2px solid rgba(255, 255, 255, 0.95);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px; /* center on (x,y) via translate */
   pointer-events: none;
   z-index: 2147483646;
   will-change: transform;
   transform: translate3d(-100px, -100px, 0);
   box-sizing: border-box;
+  /* Pointer/hand affordance drawn as an inline SVG arrow cursor so it reads
+   * unmistakably as "the AI is pointing here". Indigo accent (#6366f1) with
+   * a white outline keeps contrast on dark and light backgrounds alike. */
+  background: no-repeat center/contain
+    url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>\
+<path d='M7 4 L7 26 L13 20 L17 29 L21 27 L17 18 L26 18 Z' \
+fill='%236366f1' stroke='%23ffffff' stroke-width='2' \
+stroke-linejoin='round'/></svg>");
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.45));
+  animation: at-cursor-bob 1.6s ease-in-out infinite;
+}
+
+/* Soft accent halo so the cursor is locatable even on busy pages. */
+.at-cursor::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(99, 102, 241, 0.28) 0%,
+    rgba(99, 102, 241, 0) 70%
+  );
+  pointer-events: none;
 }
 
 .at-cursor__ripple {
@@ -29,8 +59,8 @@
   height: 0;
   margin: 0;
   border-radius: 50%;
-  border: 2px solid rgba(239, 68, 68, 0.85);
-  background: rgba(239, 68, 68, 0.18);
+  border: 3px solid rgba(99, 102, 241, 0.9);
+  background: rgba(99, 102, 241, 0.2);
   pointer-events: none;
   z-index: 2147483646;
   opacity: 0;
@@ -39,30 +69,68 @@
 }
 
 .at-cursor__ripple.at-cursor__ripple--active {
-  animation: at-cursor-ripple 250ms ease-out forwards;
+  animation: at-cursor-ripple 280ms ease-out forwards;
+}
+
+/* Pulsing target ring parked on the destination element. Sized inline by
+ * cursor.js (highlight()). Gentle, continuous pulse draws the eye to where
+ * the click should land WITHOUT covering the element (pointer-events:none,
+ * transparent interior). */
+.at-cursor__ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  border: 3px solid rgba(99, 102, 241, 0.95);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.6),
+    0 0 14px 2px rgba(99, 102, 241, 0.55);
+  background: transparent;
+  pointer-events: none;
+  z-index: 2147483645;
+  box-sizing: border-box;
+  transform: translate3d(-100px, -100px, 0);
+}
+
+.at-cursor__ring.at-cursor__ring--active {
+  animation: at-cursor-ring-pulse 1.4s ease-in-out infinite;
 }
 
 .at-cursor__label {
   position: fixed;
   top: 0;
   left: 0;
-  background: rgba(0, 0, 0, 0.78);
+  background: rgba(17, 24, 39, 0.94);
   color: #ffffff;
-  font: 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  padding: 4px 8px;
-  border-radius: 4px;
+  font: 600 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  padding: 7px 11px;
+  border-radius: 8px;
   pointer-events: none;
   z-index: 2147483646;
-  white-space: nowrap;
+  white-space: normal;
   transform: translate3d(-100px, -100px, 0);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-  max-width: 240px;
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.12);
+  max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* Guide-mode (sticky) variant: brighter accent border + a subtle attention
+ * pulse so "ここをクリックしてください" stands out while we wait. */
+.at-cursor__label--guide {
+  background: rgba(49, 46, 129, 0.96);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 0 2px rgba(129, 140, 248, 0.9);
+  animation: at-cursor-label-pulse 1.6s ease-in-out infinite;
+}
+
 .at-cursor--hidden,
 .at-cursor__ripple--hidden,
+.at-cursor__ring--hidden,
 .at-cursor__label--hidden {
   display: none !important;
 }
@@ -72,15 +140,48 @@
     width: 0;
     height: 0;
     margin: 0;
-    opacity: 0.9;
+    opacity: 0.95;
   }
   60% {
     opacity: 0.55;
   }
   100% {
-    width: 46px;
-    height: 46px;
-    margin: -23px 0 0 -23px;
+    width: 58px;
+    height: 58px;
+    margin: -29px 0 0 -29px;
     opacity: 0;
   }
+}
+
+@keyframes at-cursor-ring-pulse {
+  0% {
+    opacity: 0.55;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 1;
+    filter: brightness(1.25);
+  }
+  100% {
+    opacity: 0.55;
+    filter: brightness(1);
+  }
+}
+
+@keyframes at-cursor-bob {
+  0%   { translate: 0 0; }
+  50%  { translate: 0 -3px; }
+  100% { translate: 0 0; }
+}
+
+@keyframes at-cursor-label-pulse {
+  0%   { box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 0 2px rgba(129,140,248,0.9); }
+  50%  { box-shadow: 0 4px 18px rgba(0,0,0,0.45), 0 0 0 4px rgba(129,140,248,0.55); }
+  100% { box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 0 2px rgba(129,140,248,0.9); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .at-cursor { animation: none; }
+  .at-cursor__ring.at-cursor__ring--active { animation: none; opacity: 0.9; }
+  .at-cursor__label--guide { animation: none; }
 }

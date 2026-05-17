@@ -37,14 +37,18 @@
     // Recipe-driven handoff (Section 5).
     PAUSED_FOR_HUMAN: "AT_PAUSED_FOR_HUMAN",
     RESUME: "AT_RESUME",
+    // Guide mode (BtoB pivot).
+    GUIDE_ADVANCE: "AT_GUIDE_ADVANCE",
   };
   var KEYS = globalThis.__AT_KEYS__ || {
     MODE: "at_mode",
     SPEED: "at_speed",
+    RUN_MODE: "at_run_mode",
   };
   var DEFAULTS = globalThis.__AT_DEFAULTS__ || {
     MODE: "hybrid",
     SPEED: "normal",
+    RUN_MODE: "auto",
   };
   var SPEEDS = globalThis.__AT_SPEED__ || {
     slow:   { cursorMs: 900, betweenMs: 1200, settleMs: 500 },
@@ -70,6 +74,16 @@
   var currentStep = null;        // { stepIndex, totalSteps, step }
   var stepIterations = 0;        // exposed via __AT__.main for debugging
   var pendingAsks = new Map();   // askId -> { resolve, reject }
+
+  // ----- run-mode (Auto vs Guide) — BtoB pivot ----------------------------
+  // 'auto'  : the AI clicks/types automatically (legacy behavior).
+  // 'guide' : the AI cursor points at the target and WAITS for the user to
+  //           perform the action themselves (learning mode).
+  // Read from chrome.storage.local on every run via readSettings().
+  var actionMode = "auto";       // 'auto' | 'guide'
+  // Resolver for an in-flight guide-mode wait (user is doing the action, or
+  // pressing "Next" in the sidepanel). Cleared on stop/abort.
+  var pendingGuide = null;       // { resolve, cleanup } | null
 
   // ----- recipe context (Section 5) ---------------------------------------
   // `currentRecipe` rides on every STEP_START when the Run is recipe-driven.
@@ -138,6 +152,10 @@
   function getRules() {
     return (globalThis.__AT__ && globalThis.__AT__.rules) || null;
   }
+  // Team B's selector cache. May be absent (degrade to no-cache).
+  function getDomCache() {
+    return (globalThis.__AT__ && globalThis.__AT__.domCache) || null;
+  }
 
   function speedProfile() {
     var key = (globalThis.__AT__ && globalThis.__AT__.speedKey) || DEFAULTS.SPEED || "normal";
@@ -148,12 +166,15 @@
 
   function readSettings() {
     return new Promise(function (resolve) {
+      var runModeKey = KEYS.RUN_MODE || "at_run_mode";
+      var defRunMode = DEFAULTS.RUN_MODE || "auto";
       var fallback = {
         mode: DEFAULTS.MODE || "hybrid",
         speed: DEFAULTS.SPEED || "normal",
+        runMode: defRunMode,
       };
       try {
-        chrome.storage.local.get([KEYS.MODE, KEYS.SPEED], function (out) {
+        chrome.storage.local.get([KEYS.MODE, KEYS.SPEED, runModeKey], function (out) {
           var lastErr = null;
           try { lastErr = chrome.runtime && chrome.runtime.lastError; } catch (e) {}
           if (lastErr) {
@@ -163,13 +184,17 @@
           }
           var mode = out && out[KEYS.MODE];
           var speed = out && out[KEYS.SPEED];
+          var rm = out && out[runModeKey];
           if (mode !== "rules" && mode !== "hybrid" && mode !== "ai") {
             mode = fallback.mode;
           }
           if (speed !== "slow" && speed !== "normal" && speed !== "fast") {
             speed = fallback.speed;
           }
-          resolve({ mode: mode, speed: speed });
+          if (rm !== "auto" && rm !== "guide") {
+            rm = defRunMode;
+          }
+          resolve({ mode: mode, speed: speed, runMode: rm });
         });
       } catch (e) {
         warn("storage.get threw:", e);
@@ -259,7 +284,12 @@
   }
 
   // ----- dispatching -------------------------------------------------------
-  function dispatchAction(act) {
+  // Returns Promise<{ executed:boolean, el?:Element }>. Team B's
+  // action-executor returns { executed:true, el } on success — we thread `el`
+  // straight back out so callers can feed the selector cache. A pre-resolved
+  // element may be passed in `preEl` (selector-cache fast-path) so we skip the
+  // dom.resolve(targetId) lookup entirely.
+  function dispatchAction(act, preEl) {
     var action = getAction();
     if (!action) return Promise.resolve({ executed: false });
 
@@ -267,35 +297,46 @@
 
     if (act.verb === "click" || act.verb === "skip") {
       // 'skip' is just a click on a dismiss affordance from the AI's POV.
-      if (!act.targetId) return Promise.resolve({ executed: false });
-      var dom = getDom();
-      var el = dom ? dom.resolve(act.targetId) : null;
+      var el = preEl || null;
+      if (!el) {
+        if (!act.targetId) return Promise.resolve({ executed: false });
+        var dom = getDom();
+        el = dom ? dom.resolve(act.targetId) : null;
+      }
       if (!el) {
         dbg("dispatch: unresolved target", act.targetId);
         return Promise.resolve({ executed: false });
       }
-      return action.click(el, { label: label || "Clicking…" })
-        .then(function () { return { executed: true }; });
+      return Promise.resolve(action.click(el, { label: label || "Clicking…" }))
+        .then(function (r) {
+          return normalizeActionResult(r, el);
+        });
     }
 
     if (act.verb === "type") {
-      if (!act.targetId || typeof act.text !== "string") {
+      if (typeof act.text !== "string") {
         return Promise.resolve({ executed: false });
       }
-      var dom2 = getDom();
-      var el2 = dom2 ? dom2.resolve(act.targetId) : null;
+      var el2 = preEl || null;
+      if (!el2) {
+        if (!act.targetId) return Promise.resolve({ executed: false });
+        var dom2 = getDom();
+        el2 = dom2 ? dom2.resolve(act.targetId) : null;
+      }
       if (!el2) {
         dbg("dispatch: unresolved type target", act.targetId);
         return Promise.resolve({ executed: false });
       }
-      return action.type(el2, act.text, { label: label || "Typing…" })
-        .then(function () { return { executed: true }; });
+      return Promise.resolve(action.type(el2, act.text, { label: label || "Typing…" }))
+        .then(function (r) {
+          return normalizeActionResult(r, el2);
+        });
     }
 
     if (act.verb === "scroll") {
       var dy = typeof act.deltaY === "number" ? act.deltaY : 400;
-      var target = null;
-      if (act.targetId) {
+      var target = preEl || null;
+      if (!target && act.targetId) {
         var dom3 = getDom();
         target = dom3 ? dom3.resolve(act.targetId) : null;
       }
@@ -305,6 +346,67 @@
 
     // 'done' is handled by the loop, not here.
     return Promise.resolve({ executed: false });
+  }
+
+  // Action-executor returns { executed:true, el } on success / { executed:false }
+  // on failure (Team B). Old callers returned undefined → treat as executed.
+  // Normalize to a consistent { executed, el } shape and prefer the element
+  // the executor actually acted on.
+  function normalizeActionResult(r, fallbackEl) {
+    if (r && typeof r === "object" && "executed" in r) {
+      return {
+        executed: !!r.executed,
+        el: r.el || (r.executed ? fallbackEl : null) || null,
+      };
+    }
+    // Legacy contract: a settled promise meant success.
+    return { executed: true, el: fallbackEl || null };
+  }
+
+  // ----- selector-cache intent ---------------------------------------------
+  // The cache key needs a SHORT, STABLE string per (recipe,step,action) that
+  // is reproducible across runs of the same recipe step. Prefer step.id so a
+  // changing free-text `reason` from the LLM never fragments the cache.
+  function cacheIntent(act) {
+    var verb = (act && act.verb) || "act";
+    var stepId = "";
+    try {
+      stepId = (currentStep && currentStep.step && currentStep.step.id) || "";
+    } catch (e) { stepId = ""; }
+    if (stepId) return verb + ":" + stepId;
+    // Open-ended runs have no step.id — fall back to a normalized reason so
+    // the entry is still reasonably stable within a session.
+    var reason = (act && typeof act.reason === "string") ? act.reason : "";
+    reason = collapseWS(reason).toLowerCase().slice(0, 40);
+    return verb + ":" + (reason || "noid");
+  }
+
+  function cacheRecipeId() {
+    try {
+      return (currentRecipe && currentRecipe.id) || null;
+    } catch (e) { return null; }
+  }
+
+  // After a successful click/type, persist the element's stable selector so
+  // the next run of this step can skip the LLM. Best-effort; never throws.
+  function rememberSelector(act, el) {
+    var domCache = getDomCache();
+    if (!domCache || !el) return;
+    try {
+      var dom = getDom();
+      if (!dom || typeof dom.selectorFor !== "function") return;
+      var sel = dom.selectorFor(el);
+      if (!sel) return;
+      domCache.remember(cacheRecipeId(), cacheStepId(), cacheIntent(act), sel);
+    } catch (e) {
+      dbg("rememberSelector threw:", e);
+    }
+  }
+
+  function cacheStepId() {
+    try {
+      return (currentStep && currentStep.step && currentStep.step.id) || null;
+    } catch (e) { return null; }
   }
 
   // ----- the loop ----------------------------------------------------------
@@ -416,6 +518,9 @@
         globalThis.__AT__ = globalThis.__AT__ || {};
         globalThis.__AT__.speedKey = settings.speed;
         globalThis.__AT__.rulePolicy = "progress";
+        // Quick-skip is always automatic by design ("skip the tutorial
+        // fast"). Guide mode only applies to the goal-driven step runner.
+        actionMode = "auto";
 
         var cursor = getCursor();
         if (cursor) {
@@ -640,6 +745,200 @@
     });
   }
 
+  // ----- guide mode -------------------------------------------------------
+  // In Guide mode the AI does NOT act. It points the cursor at the target,
+  // shows a localized "click here / type this" bubble + target ring, then
+  // WAITS for the user to do it themselves. Resolution sources:
+  //   • the user actually clicks the target (or a descendant), OR
+  //   • for type: an input/change fires on the field, OR
+  //   • the user presses "次へ / Next" in the sidepanel (GUIDE_ADVANCE), OR
+  //   • a soft timeout fires → we re-narrate (NOT silently proceed) and
+  //     keep waiting one more bounded round.
+  // Always honors stopRequested / loopGeneration so a USER_STOP unblocks it.
+  var GUIDE_TIMEOUT_MS = 45000;
+
+  function t(key, fallback) {
+    try {
+      var i18n = globalThis.__AT_I18N__;
+      if (i18n && typeof i18n.t === "function") {
+        var s = i18n.t(key);
+        if (s) return s;
+      }
+    } catch (e) {}
+    return fallback;
+  }
+
+  // Returns Promise<'did-it' | 'aborted'>. Resolves 'did-it' when the user
+  // performed the action (or pressed Next); 'aborted' on stop/supersede.
+  function waitForUserAction(verb, el, myGeneration) {
+    return new Promise(function (resolve) {
+      var settled = false;
+      var timer = 0;
+      var reNarrated = false;
+
+      function stopped() {
+        return stopRequested ||
+          myGeneration !== loopGeneration ||
+          !running ||
+          runMode !== "step";
+      }
+
+      function cleanup() {
+        if (timer) { clearTimeout(timer); timer = 0; }
+        try {
+          if (el && el.removeEventListener) {
+            el.removeEventListener("click", onTargetClick, true);
+            el.removeEventListener("input", onFieldInput, true);
+            el.removeEventListener("change", onFieldInput, true);
+          }
+        } catch (e) {}
+        try {
+          document.removeEventListener("click", onDocClick, true);
+        } catch (e) {}
+        pendingGuide = null;
+      }
+
+      function finish(outcome) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        try {
+          var cursor = getCursor();
+          if (cursor && typeof cursor.clearHighlight === "function") {
+            cursor.clearHighlight();
+          }
+          if (cursor && typeof cursor.setLabel === "function") {
+            cursor.setLabel("");
+          }
+        } catch (e) {}
+        resolve(outcome);
+      }
+
+      function targetHit(node) {
+        if (!el || !node) return false;
+        return node === el ||
+          (el.contains && el.contains(node)) ||
+          (node.contains && node.contains(el));
+      }
+
+      function onTargetClick() { finish("did-it"); }
+      function onDocClick(ev) {
+        if (targetHit(ev && ev.target)) finish("did-it");
+      }
+      function onFieldInput() { finish("did-it"); }
+
+      // The sidepanel "Next" button resolves through here.
+      pendingGuide = {
+        resolve: function () { finish("did-it"); },
+        cleanup: cleanup,
+      };
+
+      try {
+        if (el && el.addEventListener) {
+          el.addEventListener("click", onTargetClick, true);
+          if (verb === "type") {
+            el.addEventListener("input", onFieldInput, true);
+            el.addEventListener("change", onFieldInput, true);
+          }
+        }
+        // Capture-phase doc listener catches clicks that the page stops
+        // propagating, or clicks on a re-rendered equivalent element.
+        document.addEventListener("click", onDocClick, true);
+      } catch (e) {}
+
+      // Bounded soft timeout: re-narrate once, then give one more window
+      // before giving up so we never wait unbounded.
+      function arm(ms) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function () {
+          timer = 0;
+          if (settled) return;
+          if (stopped()) { finish("aborted"); return; }
+          if (!reNarrated) {
+            reNarrated = true;
+            sendStepProgress({
+              narration: t("guide.waitingStill",
+                "Still waiting for you — do the highlighted step, or press Next."),
+              action: "guide_wait",
+              detail: "",
+            });
+            // Re-assert the cursor/ring in case the page repainted.
+            pointCursorAt(el, verb);
+            arm(GUIDE_TIMEOUT_MS);
+          } else {
+            // Don't silently proceed: hand control to the sidepanel Next.
+            sendStepProgress({
+              narration: t("guide.timedOut",
+                "Taking a while. Finish the step yourself, then press Next."),
+              action: "guide_wait",
+              detail: "",
+            });
+            arm(GUIDE_TIMEOUT_MS);
+          }
+        }, ms);
+      }
+      arm(GUIDE_TIMEOUT_MS);
+
+      // Poll stop flags cheaply (USER_STOP clears pendingGuide via
+      // clearPendingGuide(), which also rejects — but guard anyway).
+      var stopPoll = setInterval(function () {
+        if (settled) { clearInterval(stopPoll); return; }
+        if (stopped()) { clearInterval(stopPoll); finish("aborted"); }
+      }, 500);
+    });
+  }
+
+  // Glide the prominent cursor to `el`, draw the ring, and show a sticky,
+  // localized "do this" bubble appropriate to the verb.
+  function pointCursorAt(el, verb, suggestText) {
+    var cursor = getCursor();
+    if (!cursor || !el) return Promise.resolve();
+    var label;
+    if (verb === "type") {
+      var hint = suggestText
+        ? t("guide.typeThis", "Type this here:") + " " + capStr(suggestText, 60)
+        : t("guide.typeHere", "Type here, then continue");
+      label = hint;
+    } else {
+      label = t("guide.clickHere", "Click here");
+    }
+    try {
+      var p;
+      if (typeof cursor.pointAt === "function") {
+        p = cursor.pointAt(el);
+      } else {
+        var dom = getDom();
+        var c = dom && typeof dom.centerOf === "function" ? dom.centerOf(el) : null;
+        p = c ? cursor.moveTo(c.x, c.y) : Promise.resolve();
+      }
+      return Promise.resolve(p).then(function () {
+        try { cursor.setLabel(label, { sticky: true }); } catch (e) {}
+      });
+    } catch (e) {
+      return Promise.resolve();
+    }
+  }
+
+  function clearPendingGuide(err) {
+    if (!pendingGuide) return;
+    var p = pendingGuide;
+    pendingGuide = null;
+    try { if (typeof p.cleanup === "function") p.cleanup(); } catch (e) {}
+    // Resolving (vs rejecting) is fine: the loop re-checks stop flags right
+    // after waitForUserAction() resolves, so a stop still tears the run down.
+    try { if (typeof p.resolve === "function") p.resolve(); } catch (e) {}
+    void err;
+  }
+
+  function handleGuideAdvance() {
+    if (!pendingGuide) {
+      dbg("GUIDE_ADVANCE: no pending guide wait");
+      return;
+    }
+    var p = pendingGuide;
+    try { if (typeof p.resolve === "function") p.resolve(); } catch (e) {}
+  }
+
   // Handle one AI step-action. Returns a Promise resolving to a string:
   //   'continue' — proceed to next loop iteration (executed or async handled)
   //   'noop'     — nothing happened; count as a noop
@@ -763,15 +1062,16 @@
       // Capture detail BEFORE click — element may be removed after the click.
       var detail = describeActionDetail(normalized);
 
-      // Pre-check element resolution so we can narrate the actual failure
-      // mode instead of going silent.
+      // Pre-resolve the target element. We KEEP the reference so we can
+      // (a) point the guide cursor at it, (b) feed the selector cache.
+      var resolvedEl = null;
       if (
         (normalized.verb === "click" || normalized.verb === "type" || normalized.verb === "skip") &&
         normalized.targetId
       ) {
         var domEarly = getDom();
-        var elEarly = domEarly ? domEarly.resolve(normalized.targetId) : null;
-        if (!elEarly) {
+        resolvedEl = domEarly ? domEarly.resolve(normalized.targetId) : null;
+        if (!resolvedEl) {
           sendStepProgress({
             narration: "Couldn't find target on page",
             action: "error",
@@ -783,8 +1083,69 @@
         }
       }
 
-      return dispatchAction(normalized).then(function (result) {
+      var myGen = loopGeneration;
+
+      // ----- Guide mode: point, wait for the USER, don't auto-act ---------
+      // Only intercept click/skip/type on a resolvable element. scroll (and
+      // any element-less action) still auto-executes so the page can move
+      // into view for the user.
+      if (
+        actionMode === "guide" &&
+        resolvedEl &&
+        (normalized.verb === "click" || normalized.verb === "skip" || normalized.verb === "type")
+      ) {
+        var doingWhat = normalized.verb === "type"
+          ? t("guide.narrate.type", "Type into the highlighted field")
+          : t("guide.narrate.click", "Click the highlighted element");
+        sendStepProgress({
+          narration: normalized.reason || doingWhat,
+          action: "guide_point",
+          detail: detail,
+        });
+        return pointCursorAt(
+          resolvedEl,
+          normalized.verb,
+          normalized.verb === "type" ? normalized.text : ""
+        ).then(function () {
+          sendStepProgress({
+            narration: t("guide.waitingFor", "Waiting for you") +
+              (detail ? " — " + detail : ""),
+            action: "guide_wait",
+            detail: detail,
+          });
+          return waitForUserAction(normalized.verb, resolvedEl, myGen);
+        }).then(function (outcome) {
+          if (outcome === "aborted") return "aborted";
+          // The user did it (or pressed Next). Remember the selector so a
+          // future AUTO run of this step can skip the LLM, and anchor the
+          // next AI iteration.
+          rememberSelector(normalized, resolvedEl);
+          lastAction = {
+            verb: normalized.verb,
+            targetId: normalized.targetId || null,
+            text: typeof normalized.text === "string" ? normalized.text : null,
+            detail: detail || "",
+          };
+          sendStepProgress({
+            narration: t("guide.youDidIt", "Nice — done. Moving on."),
+            action: normalized.verb,
+            detail: detail,
+          });
+          return "continue";
+        });
+      }
+
+      // ----- Auto mode (legacy): the AI acts, wired to selector cache -----
+      var domCache = getDomCache();
+      var intent = cacheIntent(normalized);
+      var recipeId = cacheRecipeId();
+      var stepId = cacheStepId();
+
+      return dispatchAction(normalized, resolvedEl).then(function (result) {
         if (result && result.executed) {
+          var actedEl = result.el || resolvedEl || null;
+          // Persist the selector for next time (best-effort, guarded).
+          rememberSelector(normalized, actedEl);
           // Record what we just did so the next AI iteration is anchored.
           lastAction = {
             verb: normalized.verb,
@@ -800,8 +1161,10 @@
           return "continue";
         }
         // Executed: false reached us even though the element resolved above.
-        // Surface this — most often it's a click that fired but the page
-        // immediately re-rendered, or a scroll that did nothing.
+        // If a cached selector got us here, drop it so the LLM re-decides.
+        if (domCache && (normalized.verb === "click" || normalized.verb === "type" || normalized.verb === "skip")) {
+          try { domCache.forget(recipeId, stepId, intent); } catch (e) {}
+        }
         sendStepProgress({
           narration: "Action didn't take effect",
           action: "error",
@@ -923,6 +1286,102 @@
         return sleep(speedProfile().betweenMs).then(iter);
       }
 
+      // ----- Selector-cache fast-path (Team B) ---------------------------
+      // Before spending an LLM call, see if a previous run of THIS recipe
+      // step cached a selector that still resolves to a live element. If so,
+      // perform (auto) or point-at (guide) it directly and skip the LLM.
+      // Stable intents only (verb + ':' + step.id) so the key survives runs.
+      // Guarded by `if (domCache)` so a missing module is a pure no-op.
+      var domCacheProbe = getDomCache();
+      if (domCacheProbe && currentStep && currentStep.step && currentStep.step.id) {
+        return tryCachedStep(domCacheProbe, myGeneration).then(function (cres) {
+          if (cres === "hit-continue") {
+            consecutiveNoops = 0;
+            var profC = speedProfile();
+            return sleep((profC.betweenMs | 0) + (profC.settleMs | 0)).then(iter);
+          }
+          if (cres === "aborted") return "aborted";
+          if (cres === "stopped") return "stopped";
+          // 'miss' — fall through to the LLM exactly as before.
+          return runStepAi(snapshot);
+        });
+      }
+      return runStepAi(snapshot);
+    }
+
+    // Probe the cache for the small set of stable intents this step might
+    // use. Resolves to: 'hit-continue' (acted/guided OK), 'miss', 'aborted',
+    // or 'stopped'. Never throws.
+    function tryCachedStep(domCache, myGeneration) {
+      var stepId = currentStep.step.id;
+      var recipeId = cacheRecipeId();
+      var verbs = ["click", "skip", "type"];
+      var idx = 0;
+
+      function tryNext() {
+        if (shouldStop()) return Promise.resolve("stopped");
+        if (idx >= verbs.length) return Promise.resolve("miss");
+        var verb = verbs[idx++];
+        var intent = verb + ":" + stepId;
+        return domCache.resolveCached(recipeId, stepId, intent).then(function (el) {
+          if (!el) return tryNext();
+          // 'type' from cache without text is useless — skip it; only the
+          // LLM knows what to type. Click/skip can act on the element alone.
+          if (verb === "type") return tryNext();
+          var pseudo = {
+            verb: verb,
+            targetId: null,
+            text: null,
+            reason: "",
+            source: "cache",
+          };
+          var detail = describeActionDetail({ verb: verb, targetId: null });
+
+          if (actionMode === "guide") {
+            sendStepProgress({
+              narration: t("guide.narrate.click", "Click the highlighted element"),
+              action: "guide_point",
+              detail: detail,
+            });
+            return pointCursorAt(el, verb, "").then(function () {
+              return waitForUserAction(verb, el, myGeneration);
+            }).then(function (outcome) {
+              if (outcome === "aborted") return "aborted";
+              domCache.hit(recipeId, stepId, intent);
+              lastAction = { verb: verb, targetId: null, text: null, detail: detail };
+              sendStepProgress({
+                narration: t("guide.youDidIt", "Nice — done. Moving on."),
+                action: verb,
+                detail: detail,
+              });
+              return "hit-continue";
+            });
+          }
+
+          return dispatchAction(pseudo, el).then(function (result) {
+            if (result && result.executed) {
+              domCache.hit(recipeId, stepId, intent);
+              lastAction = { verb: verb, targetId: null, text: null, detail: detail };
+              sendStepProgress({
+                narration: t("cache.usedCached", "Used a remembered shortcut"),
+                action: verb,
+                detail: detail,
+              });
+              return "hit-continue";
+            }
+            // Cached selector resolved but the action failed → stale. Drop
+            // it and fall through to the LLM.
+            try { domCache.forget(recipeId, stepId, intent); } catch (e) {}
+            return tryNext();
+          });
+        }, function () {
+          return tryNext();
+        });
+      }
+      return tryNext();
+    }
+
+    function runStepAi(snapshot) {
       // hybrid / ai: consult Claude in step mode.
       return requestAiStepAction(snapshot).then(function (aiAction) {
         if (shouldStop()) return "stopped";
@@ -1067,8 +1526,13 @@
         globalThis.__AT__ = globalThis.__AT__ || {};
         globalThis.__AT__.speedKey = settings.speed;
         globalThis.__AT__.rulePolicy = "progress";
+        // Run mode (Auto vs Guide) — drives whether the AI acts or the
+        // cursor points and waits for the user.
+        actionMode = settings.runMode === "guide" ? "guide" : "auto";
 
-        dbg("step run start mode=", settings.mode, "stepIndex=", currentStep.stepIndex);
+        dbg("step run start mode=", settings.mode,
+            "runMode=", actionMode,
+            "stepIndex=", currentStep.stepIndex);
 
         runStepLoop(settings.mode)
           .then(function (reason) { finishStepRun(reason); })
@@ -1117,6 +1581,7 @@
     dbg("USER_STOP received");
     clearPendingAsks(new Error("user_stop"));
     clearPendingResume(new Error("user_stop"));
+    clearPendingGuide(new Error("user_stop"));
     stopRequested = true;
     running = false;
     loopGeneration++;
@@ -1431,6 +1896,7 @@
     stopRequested = true;
     clearPendingAsks(new Error("recipe_success"));
     clearPendingResume(new Error("recipe_success"));
+    clearPendingGuide(new Error("recipe_success"));
   }
 
   function handleRunComplete() {
@@ -1439,6 +1905,7 @@
     dbg("RUN_COMPLETE received");
     clearPendingAsks(new Error("run_complete"));
     clearPendingResume(new Error("run_complete"));
+    clearPendingGuide(new Error("run_complete"));
     running = false;
     runMode = null;
     currentStep = null;
@@ -1514,6 +1981,11 @@
           sendResponse({ ok: true });
           return false;
         }
+        case MSG.GUIDE_ADVANCE: {
+          handleGuideAdvance();
+          sendResponse({ ok: true });
+          return false;
+        }
         default:
           return false;
       }
@@ -1530,9 +2002,12 @@
     currentStep: function () { return currentStep; },
     stepIterations: function () { return stepIterations; },
     pendingAskCount: function () { return pendingAsks.size; },
+    actionMode: function () { return actionMode; },
+    isGuideWaiting: function () { return !!pendingGuide; },
     _start: handleStart,
     _stop: handleStop,
     _stepStart: handleStepStart,
     _userStop: handleUserStop,
+    _guideAdvance: handleGuideAdvance,
   };
 })();

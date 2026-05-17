@@ -123,6 +123,47 @@
             id="catalogCount"
             aria-live="polite"
           ></p>
+
+          <!-- Run-mode toggle (Auto vs Guide). Persists to at_run_mode.
+               Mandated UX: let non-IT users choose "do it for me" vs
+               "guide me" (cursor points, user acts to learn). -->
+          <fieldset
+            class="runmode"
+            id="runModeToggle"
+            data-i18n-aria-label="runMode.ariaGroup"
+            aria-label="Run mode"
+          >
+            <legend class="runmode__legend" data-i18n="runMode.label">How should I help?</legend>
+            <div class="runmode__options" role="radiogroup" data-i18n-aria-label="runMode.ariaGroup" aria-label="Run mode">
+              <label class="runmode__opt">
+                <input
+                  type="radio"
+                  name="at-run-mode"
+                  value="auto"
+                  id="runModeAuto"
+                  class="runmode__input"
+                  checked
+                />
+                <span class="runmode__card">
+                  <span class="runmode__title" data-i18n="runMode.auto">Do it for me</span>
+                  <span class="runmode__desc" data-i18n="runMode.autoDesc">I click and type for you automatically.</span>
+                </span>
+              </label>
+              <label class="runmode__opt">
+                <input
+                  type="radio"
+                  name="at-run-mode"
+                  value="guide"
+                  id="runModeGuide"
+                  class="runmode__input"
+                />
+                <span class="runmode__card">
+                  <span class="runmode__title" data-i18n="runMode.guide">Guide me</span>
+                  <span class="runmode__desc" data-i18n="runMode.guideDesc">I point at the next step and you do it yourself.</span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
         </div>
 
         <div
@@ -220,6 +261,17 @@
         </div>
 
         <div class="live__actions">
+          <!-- Guide-mode manual advance. Shown only while a guided run is
+               active; tells the content script the user did the step. -->
+          <button
+            type="button"
+            id="guideNextBtn"
+            class="qc-btn qc-btn--primary qc-btn--lg qc-btn--full"
+            data-i18n="runMode.next"
+            data-i18n-aria-label="runMode.nextAria"
+            aria-label="I did it — continue to the next step"
+            hidden
+          >Next</button>
           <button
             type="button"
             id="liveStopBtn"
