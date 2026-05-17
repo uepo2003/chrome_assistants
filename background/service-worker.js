@@ -56,7 +56,116 @@ const MSG = {
   RESUME: 'AT_RESUME',
   // Guide mode (BtoB pivot): sidepanel -> content "user did it / next".
   GUIDE_ADVANCE: 'AT_GUIDE_ADVANCE',
+  // Recipe Recorder (BtoB pivot Phase 3, v0.4). Mirrors
+  // common/recorder-messages.js — keep in sync.
+  RECORDER_START: 'AT_RECORDER_START',     // bg -> content: begin capture
+  RECORDER_STOP: 'AT_RECORDER_STOP',       // bg -> content: stop capture
+  RECORDER_EVENT: 'AT_RECORDER_EVENT',     // content -> bg: one interaction
+  RECORDER_SAVE: 'AT_RECORDER_SAVE',       // sidepanel -> bg: begin a draft
+  RECORDER_EXPORT: 'AT_RECORDER_EXPORT',   // sidepanel -> bg: build Recipe JSON
+  RECORDER_SKIPPED: 'AT_RECORDER_SKIPPED', // content -> bg -> sidepanel notice
 };
+
+// ---------------------------------------------------------------------------
+// Recipe Recorder state (in-memory drafts keyed by tab) + helpers.
+// Drafts only persist to chrome.storage.local.at_user_recipes on STOP.
+// Nothing here ever leaves the browser (spec: recipe-recorder).
+// ---------------------------------------------------------------------------
+const USER_RECIPES_KEY = 'at_user_recipes';
+/** @type {Map<number, { id: string, meta: object, events: object[], startedAt: number }>} */
+const recorderDraftsByTab = new Map();
+
+function kebab(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'user-recipe';
+}
+
+function regexEscape(s) {
+  return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function uniqueRecipeId(base) {
+  let existing = [];
+  try {
+    const out = await chrome.storage.local.get(USER_RECIPES_KEY);
+    existing = Array.isArray(out && out[USER_RECIPES_KEY])
+      ? out[USER_RECIPES_KEY] : [];
+  } catch { /* ignore */ }
+  const taken = new Set(existing.map((r) => r && r.id));
+  try {
+    const cat = getCatalog();
+    if (cat && cat.byId) for (const id of cat.byId.keys()) taken.add(id);
+  } catch { /* catalog may be unavailable */ }
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
+/** Build a Recipe object that conforms to recipes/_types.js from a draft. */
+async function buildRecipeFromDraft(draft, finalUrl) {
+  const meta = (draft && draft.meta) || {};
+  const events = Array.isArray(draft && draft.events) ? draft.events : [];
+  const id = await uniqueRecipeId(kebab(meta.nameEn || meta.nameJa || 'user-recipe'));
+
+  let seconds = 0;
+  for (let i = 1; i < events.length; i += 1) {
+    const dt = (events[i].ts || 0) - (events[i - 1].ts || 0);
+    if (dt > 0 && dt < 120000) seconds += Math.round(dt / 1000);
+  }
+  seconds = Math.max(30, seconds);
+
+  const expectedSteps = events.map((e) => {
+    const verb = e.verb || 'act';
+    const what = (e.text || e.label || e.selector || '').toString().slice(0, 80);
+    return `${verb} "${what}"`;
+  });
+
+  return {
+    id,
+    category: meta.category || 'btob-tool',
+    targetHost: meta.host || '',
+    title: { en: meta.nameEn || id, ja: meta.nameJa || meta.nameEn || id },
+    description: { en: meta.descEn || '', ja: meta.descJa || '' },
+    estimatedSteps: events.length,
+    estimatedSeconds: seconds,
+    difficulty: 'beginner',
+    prerequisites: [],
+    humanHandoffPoints: [],
+    successCriteria: finalUrl
+      ? [{ kind: 'url', pattern: regexEscape(finalUrl) }]
+      : [],
+    expectedSteps,
+    lastVerifiedAt: new Date().toISOString().slice(0, 10),
+    recordedEvents: events,
+  };
+}
+
+async function upsertUserRecipe(recipe) {
+  try {
+    const out = await chrome.storage.local.get(USER_RECIPES_KEY);
+    const list = Array.isArray(out && out[USER_RECIPES_KEY])
+      ? out[USER_RECIPES_KEY] : [];
+    const idx = list.findIndex((r) => r && r.id === recipe.id);
+    if (idx >= 0) list[idx] = recipe;
+    else list.push(recipe);
+    await chrome.storage.local.set({ [USER_RECIPES_KEY]: list });
+  } catch (err) {
+    console.warn('[auto-tutorial] upsertUserRecipe failed:', err);
+  }
+}
+
+function setRecorderBadge(on) {
+  try {
+    chrome.action.setBadgeText({ text: on ? 'REC' : '' });
+    if (on && chrome.action.setBadgeBackgroundColor) {
+      chrome.action.setBadgeBackgroundColor({ color: '#e53935' });
+    }
+  } catch { /* action API may be unavailable in some contexts */ }
+}
 
 // ---------- Dev log ring buffer + own-context capture ---------------------
 const DEV_LOG_MAX = 200;
@@ -165,6 +274,34 @@ try {
 } catch (err) {
   console.warn('[auto-tutorial] recipe catalog load failed:', err);
 }
+
+// ---------------------------------------------------------------------------
+// Gemini-first soft migration (spec: gemini-first-defaults / design D9).
+// New installs — and existing users who never explicitly picked a provider /
+// model — get Gemini defaults written so the rest of the UI reflects them.
+// Existing, explicitly-set values are NEVER overwritten (backward compat).
+// ---------------------------------------------------------------------------
+const VALID_PROVIDERS_SET = new Set(['gemini', 'deepseek', 'anthropic', 'openai']);
+async function softMigrateGeminiDefaults() {
+  try {
+    const stored = await chrome.storage.local.get(['at_provider', 'at_model']);
+    const patch = {};
+    const provider = stored.at_provider;
+    if (typeof provider !== 'string' || !VALID_PROVIDERS_SET.has(provider)) {
+      patch.at_provider = 'gemini';
+    }
+    const model = stored.at_model;
+    if (typeof model !== 'string' || model.trim().length === 0) {
+      patch.at_model = 'gemini-2.5-flash-lite';
+    }
+    if (Object.keys(patch).length > 0) {
+      await chrome.storage.local.set(patch);
+    }
+  } catch (err) {
+    console.warn('[auto-tutorial] soft migration failed:', err);
+  }
+}
+softMigrateGeminiDefaults();
 
 setTimeout(() => {
   (async () => {
@@ -367,6 +504,67 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 // ---------------------------------------------------------------------------
+// Runtime resilience (spec: runtime-resilience).
+//
+// When we try to message a tab that has no content script (chrome:// pages,
+// the Web Store, OAuth sub-windows, pre-injection extension updates, …),
+// chrome.tabs.sendMessage rejects with "Could not establish connection" /
+// "Receiving end does not exist". Instead of a silent console.warn that
+// leaves the sidepanel stuck on "running", translate it into an explicit
+// RUN_ABORTED { reason: 'no_content_script' } broadcast and reset the run to
+// idle (same cleanup as PLAN_CANCELLED). We deliberately do NOT attempt
+// chrome.scripting.executeScript re-injection (decision D8) — most of these
+// pages forbid injection and re-injection causes double-loop bugs.
+// ---------------------------------------------------------------------------
+function isNoContentScriptError(err) {
+  const m = (err && (err.message || String(err))) || '';
+  return m.indexOf('Could not establish connection') !== -1 ||
+    m.indexOf('Receiving end does not exist') !== -1;
+}
+
+function abortRunNoContentScript(tabId) {
+  if (typeof tabId === 'number') {
+    const run = getRun(tabId);
+    // Mirror the PLAN_CANCELLED cleanup path exactly.
+    run.plan = [];
+    run.currentStepIndex = 0;
+    run.status = 'aborted';
+    run.pendingAskId = null;
+    run.recipeId = null;
+    run.recipe = null;
+    // Per spec: do NOT recordRunHistory — this is not a user-initiated abort.
+  }
+  console.warn('[auto-tutorial] no content script on tab', tabId,
+    '— aborting run (no_content_script)');
+  broadcastToSidepanel({
+    type: MSG.RUN_ABORTED,
+    tabId,
+    reason: 'no_content_script',
+  });
+}
+
+/**
+ * Send a message to a tab's content script, translating the
+ * "no content script" failure into a friendly RUN_ABORTED. All copilot ->
+ * content sends go through this (STEP_START, RESUME, USER_REPLY,
+ * CONFIRM_RESPONSE, USER_STOP, GUIDE_ADVANCE).
+ * @returns {Promise<{ ok: boolean, aborted?: boolean }>}
+ */
+async function safeSendToTab(tabId, message) {
+  try {
+    await chrome.tabs.sendMessage(tabId, message);
+    return { ok: true };
+  } catch (err) {
+    if (isNoContentScriptError(err)) {
+      abortRunNoContentScript(tabId);
+      return { ok: false, aborted: true };
+    }
+    console.warn('[auto-tutorial] sendToTab failed:', err && err.message);
+    return { ok: false, aborted: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Navigation resume: when a tab in active copilot run finishes loading a new
 // page (because an action triggered navigation), the previous content script is
 // gone. Re-issue STEP_START to the fresh content script so the loop continues
@@ -412,7 +610,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   const step = run.plan[run.currentStepIndex];
   const recipe = recipeStepPayload(run);
   setTimeout(() => {
-    chrome.tabs.sendMessage(tabId, {
+    safeSendToTab(tabId, {
       type: MSG.STEP_START,
       tabId,
       stepIndex: run.currentStepIndex,
@@ -420,8 +618,6 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       step,
       reason: 'page_navigated',
       recipe,
-    }).catch((err) => {
-      console.warn('[auto-tutorial] resume STEP_START failed:', err && err.message);
     });
   }, 600);
 });
@@ -775,18 +971,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
 
         const step = run.plan[0];
-        try {
-          await chrome.tabs.sendMessage(tabId, {
-            type: MSG.STEP_START,
-            tabId,
-            stepIndex: 0,
-            totalSteps: run.plan.length,
-            step,
-            recipe: recipeStepPayload(run),
-          });
-        } catch (err) {
-          console.warn('[auto-tutorial] STEP_START forward failed:', err);
-        }
+        await safeSendToTab(tabId, {
+          type: MSG.STEP_START,
+          tabId,
+          stepIndex: 0,
+          totalSteps: run.plan.length,
+          step,
+          recipe: recipeStepPayload(run),
+        });
         sendResponse({ ok: true });
       })();
       return true;
@@ -844,18 +1036,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         const nextStep = run.plan[run.currentStepIndex];
         run.status = 'running';
-        try {
-          await chrome.tabs.sendMessage(tabId, {
-            type: MSG.STEP_START,
-            tabId,
-            stepIndex: run.currentStepIndex,
-            totalSteps: run.plan.length,
-            step: nextStep,
-            recipe: recipeStepPayload(run),
-          });
-        } catch (err) {
-          console.warn('[auto-tutorial] STEP_START forward failed:', err);
-        }
+        await safeSendToTab(tabId, {
+          type: MSG.STEP_START,
+          tabId,
+          stepIndex: run.currentStepIndex,
+          totalSteps: run.plan.length,
+          step: nextStep,
+          recipe: recipeStepPayload(run),
+        });
         sendResponse({ ok: true, complete: false });
       })();
       return true;
@@ -890,16 +1078,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (typeof msg.reply === 'string') {
           run.chatHistory.push({ role: 'user_reply', content: msg.reply });
         }
-        try {
-          await chrome.tabs.sendMessage(tabId, {
-            type: MSG.USER_REPLY,
-            tabId,
-            askId: msg.askId,
-            reply: msg.reply,
-          });
-        } catch (err) {
-          console.warn('[auto-tutorial] USER_REPLY forward failed:', err);
-        }
+        await safeSendToTab(tabId, {
+          type: MSG.USER_REPLY,
+          tabId,
+          askId: msg.askId,
+          reply: msg.reply,
+        });
         sendResponse({ ok: true });
       })();
       return true;
@@ -936,16 +1120,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           role: 'user_confirm',
           content: msg.approve ? 'approved' : 'declined',
         });
-        try {
-          await chrome.tabs.sendMessage(tabId, {
-            type: MSG.CONFIRM_RESPONSE,
-            tabId,
-            askId: msg.askId,
-            approve: Boolean(msg.approve),
-          });
-        } catch (err) {
-          console.warn('[auto-tutorial] CONFIRM_RESPONSE forward failed:', err);
-        }
+        await safeSendToTab(tabId, {
+          type: MSG.CONFIRM_RESPONSE,
+          tabId,
+          askId: msg.askId,
+          approve: Boolean(msg.approve),
+        });
         sendResponse({ ok: true });
       })();
       return true;
@@ -1112,14 +1292,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const run = getRun(tabId);
         // Only flip back to running if we were actually paused on a handoff.
         if (run.status === 'waiting-user') run.status = 'running';
-        try {
-          await chrome.tabs.sendMessage(tabId, {
-            type: MSG.RESUME,
-            tabId,
-          });
-        } catch (err) {
-          console.warn('[auto-tutorial] RESUME forward failed:', err);
-        }
+        await safeSendToTab(tabId, {
+          type: MSG.RESUME,
+          tabId,
+        });
         sendResponse({ ok: true });
       })();
       return true;
@@ -1136,14 +1312,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: false, error: 'no_tab_id' });
           return;
         }
-        try {
-          await chrome.tabs.sendMessage(tabId, {
-            type: MSG.GUIDE_ADVANCE,
-            tabId,
-          });
-        } catch (err) {
-          console.warn('[auto-tutorial] GUIDE_ADVANCE forward failed:', err);
-        }
+        await safeSendToTab(tabId, {
+          type: MSG.GUIDE_ADVANCE,
+          tabId,
+        });
         sendResponse({ ok: true });
       })();
       return true;
@@ -1170,15 +1342,115 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         run.plan = [];
         run.currentStepIndex = 0;
         run.pendingAskId = null;
+        await safeSendToTab(tabId, {
+          type: MSG.USER_STOP,
+          tabId,
+        });
+        sendResponse({ ok: true });
+      })();
+      return true;
+    }
+
+    // -------- Recipe Recorder (Phase 3, v0.4) -------------------------
+    case MSG.RECORDER_SAVE: {
+      // sidepanel -> bg: begin a recording draft on the active tab.
+      (async () => {
+        const tabId = explicitTabId ?? senderTabId ?? (await getActiveTabId());
+        if (typeof tabId !== 'number') {
+          sendResponse({ ok: false, error: 'no_tab_id' });
+          return;
+        }
+        const recipeDraftId = 'draft-' + Date.now().toString(36);
+        recorderDraftsByTab.set(tabId, {
+          id: recipeDraftId,
+          meta: (msg && msg.meta) || {},
+          events: [],
+          startedAt: Date.now(),
+        });
+        // Opt-in activation: content/recorder.js is idle until this message.
         try {
           await chrome.tabs.sendMessage(tabId, {
-            type: MSG.USER_STOP,
-            tabId,
+            type: MSG.RECORDER_START,
+            recipeDraftId,
           });
         } catch (err) {
-          console.warn('[auto-tutorial] USER_STOP forward failed:', err);
+          recorderDraftsByTab.delete(tabId);
+          console.warn('[auto-tutorial] RECORDER_START forward failed:', err);
+          sendResponse({ ok: false, error: 'no_content_script' });
+          return;
         }
-        sendResponse({ ok: true });
+        setRecorderBadge(true);
+        sendResponse({ ok: true, recipeDraftId });
+      })();
+      return true;
+    }
+
+    case MSG.RECORDER_EVENT: {
+      const tabId = senderTabId ?? explicitTabId;
+      const draft = typeof tabId === 'number'
+        ? recorderDraftsByTab.get(tabId) : null;
+      if (draft && msg && msg.event) {
+        draft.events.push(msg.event);
+      }
+      sendResponse({ ok: !!draft });
+      return false;
+    }
+
+    case MSG.RECORDER_SKIPPED: {
+      // Re-broadcast to the sidepanel so it can show the one-line notice.
+      broadcastToSidepanel({ type: MSG.RECORDER_SKIPPED });
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    case MSG.RECORDER_STOP: {
+      (async () => {
+        const tabId = explicitTabId ?? senderTabId ?? (await getActiveTabId());
+        const draft = typeof tabId === 'number'
+          ? recorderDraftsByTab.get(tabId) : null;
+        if (typeof tabId === 'number') {
+          try {
+            await chrome.tabs.sendMessage(tabId, { type: MSG.RECORDER_STOP });
+          } catch { /* tab may be gone — draft is still usable */ }
+        }
+        setRecorderBadge(false);
+        if (!draft) {
+          sendResponse({ ok: false, error: 'no_draft' });
+          return;
+        }
+        let finalUrl = '';
+        try {
+          const tab = await chrome.tabs.get(tabId);
+          finalUrl = (tab && tab.url) || '';
+        } catch { /* ignore */ }
+        const recipe = await buildRecipeFromDraft(draft, finalUrl);
+        await upsertUserRecipe(recipe);
+        recorderDraftsByTab.delete(tabId);
+        sendResponse({ ok: true, recipe, eventCount: draft.events.length });
+      })();
+      return true;
+    }
+
+    case MSG.RECORDER_EXPORT: {
+      (async () => {
+        const id = msg && msg.id;
+        try {
+          const out = await chrome.storage.local.get(USER_RECIPES_KEY);
+          const list = Array.isArray(out && out[USER_RECIPES_KEY])
+            ? out[USER_RECIPES_KEY] : [];
+          const recipe = list.find((r) => r && r.id === id) || null;
+          if (!recipe) {
+            sendResponse({ ok: false, error: 'not_found' });
+            return;
+          }
+          sendResponse({
+            ok: true,
+            recipe,
+            json: JSON.stringify(recipe, null, 2),
+          });
+        } catch (err) {
+          sendResponse({ ok: false, error: String(err && err.message) });
+        }
       })();
       return true;
     }

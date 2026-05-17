@@ -289,6 +289,45 @@
   // straight back out so callers can feed the selector cache. A pre-resolved
   // element may be passed in `preEl` (selector-cache fast-path) so we skip the
   // dom.resolve(targetId) lookup entirely.
+  // Live Cursor Uplift (spec: live-cursor-uplift): BEFORE every click/type
+  // we point the cursor at the element, show a "what / why" label, and dwell
+  // for a fixed minimum so the user always sees the intent first — even at
+  // speed=fast (200ms floor). This defeats the "screen got hijacked" feeling.
+  function dwellLabelText(verb, reason) {
+    var r = (typeof reason === "string" ? reason : "").trim();
+    var what = verb === "type"
+      ? t("cursor.aboutToType", "About to type")
+      : t("cursor.aboutToClick", "About to click");
+    var s = r ? r : what;
+    return s.length > 80 ? s.slice(0, 79) + "…" : s;
+  }
+
+  function dwellBeforeAction(verb, el, reason) {
+    var cursor = getCursor();
+    if (!cursor) return Promise.resolve();
+    var speedKey =
+      (globalThis.__AT__ && globalThis.__AT__.speedKey) ||
+      DEFAULTS.SPEED || "normal";
+    var dwell = 350;
+    try {
+      if (typeof cursor.labelDwellMs === "function") {
+        dwell = cursor.labelDwellMs(speedKey, actionMode);
+      }
+    } catch (e) {}
+    if (!(dwell >= 0) || dwell === Infinity) dwell = 350;
+    var p;
+    try {
+      p = (el && typeof cursor.pointAt === "function")
+        ? Promise.resolve(cursor.pointAt(el))
+        : Promise.resolve();
+    } catch (e) { p = Promise.resolve(); }
+    return p.then(function () {
+      try { cursor.show(); } catch (e) {}
+      try { cursor.setLabel(dwellLabelText(verb, reason)); } catch (e) {}
+      return sleep(dwell);
+    });
+  }
+
   function dispatchAction(act, preEl) {
     var action = getAction();
     if (!action) return Promise.resolve({ executed: false });
@@ -307,7 +346,10 @@
         dbg("dispatch: unresolved target", act.targetId);
         return Promise.resolve({ executed: false });
       }
-      return Promise.resolve(action.click(el, { label: label || "Clicking…" }))
+      return dwellBeforeAction("click", el, label)
+        .then(function () {
+          return Promise.resolve(action.click(el, { label: label || "Clicking…" }));
+        })
         .then(function (r) {
           return normalizeActionResult(r, el);
         });
@@ -327,7 +369,10 @@
         dbg("dispatch: unresolved type target", act.targetId);
         return Promise.resolve({ executed: false });
       }
-      return Promise.resolve(action.type(el2, act.text, { label: label || "Typing…" }))
+      return dwellBeforeAction("type", el2, label)
+        .then(function () {
+          return Promise.resolve(action.type(el2, act.text, { label: label || "Typing…" }));
+        })
         .then(function (r) {
           return normalizeActionResult(r, el2);
         });

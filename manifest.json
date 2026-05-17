@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Quickstart Copilot",
-  "version": "0.3.0",
-  "description": "Auto-setup helper for vibe coders — connects GitHub, Vercel, Supabase, API keys, and more.",
+  "version": "0.4.0",
+  "description": "On-screen guide for BtoB tools (kintone, Chatwork, Slack, Lステップ) and vibe-coding setup — Gemini-powered, bilingual, opt-in recipe recorder.",
   "permissions": ["storage", "activeTab", "scripting", "tabs", "sidePanel"],
   "host_permissions": ["<all_urls>"],
   "background": {
@@ -16,12 +16,14 @@
         "common/error-capture.js",
         "common/i18n.js",
         "common/messages.js",
+        "common/recorder-messages.js",
         "content/cursor.js",
         "content/dom-analyzer.js",
         "content/selector-cache.js",
         "content/action-executor.js",
         "content/rules.js",
-        "content/main.js"
+        "content/main.js",
+        "content/recorder.js"
       ],
       "css": ["content/content.css"],
       "run_at": "document_idle",

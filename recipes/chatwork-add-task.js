@@ -4,7 +4,7 @@
 /** @type {import('./_types.js').Recipe} */
 export const recipe = {
   id: 'chatwork-add-task',
-  category: 'first-setup',
+  category: 'btob-tool',
   targetHost: '*.chatwork.com',
   applicableUrlPatterns: [
     'https://www.chatwork.com/*',
@@ -14,8 +14,8 @@ export const recipe = {
     ja: 'Chatwork のルームにタスクを追加する',
   },
   description: {
-    en: 'Guides a non-IT user to open a Chatwork room, open the Task panel, create a new task, set a due date, and assign it to a teammate.',
-    ja: 'IT に不慣れなユーザーでも迷わないよう、Chatwork のルームを開いてタスクパネルからタスクを作成し、期限と担当者を設定するまでを丁寧に案内します。',
+    en: 'Guides a non-IT user to open a Chatwork room, open the Task panel, create a new task, set a due date, and assign it to a teammate. Note: your rooms and member list depend on your own Chatwork workspace, so the screen may differ from this recipe — record your own version if it does not match.',
+    ja: 'IT に不慣れなユーザーでも迷わないよう、Chatwork のルームを開いてタスクパネルからタスクを作成し、期限と担当者を設定するまでを丁寧に案内します。注意: ルームやメンバー一覧はご利用の Chatwork ワークスペースに依存するため、画面はこのレシピと異なる場合があります。合わない場合は録画機能で自社専用版を作成してください。',
   },
   estimatedSteps: 7,
   estimatedSeconds: 240,

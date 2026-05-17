@@ -16,7 +16,7 @@ const KEYS = {
 
 const DEFAULTS = {
   MODE:              'hybrid',
-  MODEL:             'gemini-2.0-flash',
+  MODEL:             'gemini-2.5-flash-lite',
   SPEED:             'normal',
   AUTO_START:        false,
   DEV_MODE:          true,
@@ -26,7 +26,7 @@ const DEFAULTS = {
 
 // Models available per provider (for the model dropdown).
 const PROVIDER_MODELS = {
-  gemini:    ['gemini-2.0-flash', 'gemini-2.5-flash-lite'],
+  gemini:    ['gemini-2.5-flash-lite', 'gemini-2.0-flash'],
   deepseek:  ['deepseek-chat'],
   anthropic: ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-7'],
   openai:    ['gpt-4o-mini'],
@@ -529,7 +529,7 @@ async function testAnthropic(apiKey, model, localAbort) {
 }
 
 async function testGemini(apiKey, model, localAbort) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || 'gemini-2.0-flash')}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model || 'gemini-2.5-flash-lite')}:generateContent?key=${encodeURIComponent(apiKey)}`;
   let response;
   try {
     response = await fetch(url, {
@@ -881,6 +881,22 @@ async function bootstrap() {
     showTestResult(false, tt('options.error.readSettings'));
   }
   refreshDevLog();
+  focusFromHash();
+}
+
+// Deep-link support: popup's "API key required" CTA opens
+// options.html#api-key-gemini so the Gemini key field is scrolled to + focused.
+function focusFromHash() {
+  try {
+    const id = (location.hash || '').replace(/^#/, '');
+    if (!id) return;
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.scrollIntoView({ block: 'center' });
+    if (typeof target.focus === 'function') {
+      setTimeout(() => { try { target.focus(); } catch (_e) {} }, 60);
+    }
+  } catch (_e) { /* no-op */ }
 }
 
 if (document.readyState === 'loading') {

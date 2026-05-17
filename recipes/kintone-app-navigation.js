@@ -4,7 +4,7 @@
 /** @type {import('./_types.js').Recipe} */
 export const recipe = {
   id: 'kintone-app-navigation',
-  category: 'first-setup',
+  category: 'btob-tool',
   targetHost: '*.cybozu.com',
   applicableUrlPatterns: [
     'https://*.cybozu.com/k/*',
@@ -15,8 +15,8 @@ export const recipe = {
     ja: 'kintone アプリの基本操作を覚える',
   },
   description: {
-    en: 'Orients a first-time kintone user: locating an app on the portal, switching between list/calendar/chart views, and using the search bar to find records.',
-    ja: 'kintone を初めて使うユーザー向けに、ポータルからアプリを探す方法、一覧・カレンダー・グラフのビュー切り替え、レコード検索の使い方を案内します。',
+    en: 'Orients a first-time kintone user: locating an app on the portal, switching between list/calendar/chart views, and using the search bar to find records. Note: kintone screens are heavily customized per organization, so your layout may differ from this recipe — record your own version if it does not match.',
+    ja: 'kintone を初めて使うユーザー向けに、ポータルからアプリを探す方法、一覧・カレンダー・グラフのビュー切り替え、レコード検索の使い方を案内します。注意: kintone の画面は組織ごとに大きくカスタマイズされるため、あなたの画面レイアウトはこのレシピと異なる場合があります。合わない場合は録画機能で自社専用版を作成してください。',
   },
   estimatedSteps: 7,
   estimatedSeconds: 300,

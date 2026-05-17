@@ -20,6 +20,7 @@
   var cursorEl = null;
   var rippleEl = null;
   var labelEl = null;
+  var labelTextEl = null; // inner text node of the label (avatar is separate)
   var ringEl = null; // pulsing target ring parked on the destination element
 
   var mounted = false;
@@ -48,6 +49,31 @@
       if (s && typeof s.cursorMs === "number") return s;
     } catch (e) {}
     return { cursorMs: 550, betweenMs: 220, settleMs: 120 };
+  }
+
+  // prefers-reduced-motion: suppress glide/pulse animations but KEEP the
+  // label dwell (information delivery is not motion). spec: live-cursor-uplift
+  function prefersReducedMotion() {
+    try {
+      return !!(window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // labelDwellMs(speedKey, runMode) — how long the "about to click / why"
+  // label MUST stay up before the click/type fires. Fixed by spec
+  // (live-cursor-uplift) to defeat the "hijacked screen" feeling. The auto
+  // floor is 200ms and CANNOT be lowered by the speed setting. Guide mode
+  // waits indefinitely (until the user presses Next / does the action).
+  function labelDwellMs(speedKey, runMode) {
+    if (runMode === "guide") return Infinity;
+    var ms;
+    if (speedKey === "slow") ms = 600;
+    else if (speedKey === "fast") ms = 200;
+    else ms = 350; // normal / unknown
+    return Math.max(200, ms);
   }
 
   function setTransform(el, x, y) {
@@ -104,9 +130,19 @@
     rippleEl.className = "at-cursor__ripple";
     rippleEl.setAttribute("aria-hidden", "true");
 
+    // Label = small AI avatar + one-line narration ("about to click … — why").
     labelEl = document.createElement("div");
     labelEl.className = "at-cursor__label at-cursor__label--hidden";
     labelEl.setAttribute("aria-hidden", "true");
+    var avatarEl = document.createElement("span");
+    avatarEl.className = "at-cursor__label-avatar";
+    avatarEl.setAttribute("aria-hidden", "true");
+    avatarEl.textContent = "QC";
+    var textEl = document.createElement("span");
+    textEl.className = "at-cursor__label-text";
+    labelEl.appendChild(avatarEl);
+    labelEl.appendChild(textEl);
+    labelTextEl = textEl;
 
     ringEl = document.createElement("div");
     ringEl.className = "at-cursor__ring";
@@ -153,6 +189,7 @@
     rippleEl = null;
     ringEl = null;
     labelEl = null;
+    labelTextEl = null;
     stickyLabel = false;
     mounted = false;
   }
@@ -178,6 +215,8 @@
       durationMs = getSpeed().cursorMs;
       if (typeof durationMs !== "number") durationMs = 550;
     }
+    // Reduced motion: jump-cut instead of gliding (dwell is unaffected).
+    if (prefersReducedMotion()) durationMs = 0;
 
     // Cancel any in-flight move: bump token and resolve its promise.
     moveToken++;
@@ -241,6 +280,13 @@
     ensureMounted();
     if (!rippleEl) return Promise.resolve();
 
+    // Reduced motion: no ripple pulse, resolve fast (click still happens).
+    if (prefersReducedMotion()) {
+      return new Promise(function (resolve) {
+        setTimeout(resolve, 30);
+      });
+    }
+
     // Position ripple at current cursor location, then (re)trigger animation.
     setTransform(rippleEl, currentX, currentY);
     rippleEl.classList.remove("at-cursor__ripple--active");
@@ -287,7 +333,8 @@
       }
       return;
     }
-    labelEl.textContent = str;
+    if (labelTextEl) labelTextEl.textContent = str;
+    else labelEl.textContent = str;
     setTransform(labelEl, currentX + 20, currentY + 6);
     labelEl.classList.remove("at-cursor__label--hidden");
     if (sticky) labelEl.classList.add("at-cursor__label--guide");
@@ -371,5 +418,7 @@
     highlight: highlight,
     clearHighlight: clearHighlight,
     pointAt: pointAt,
+    labelDwellMs: labelDwellMs,
+    prefersReducedMotion: prefersReducedMotion,
   };
 })();

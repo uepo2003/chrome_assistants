@@ -29,12 +29,13 @@ const STORAGE_KEYS = {
 };
 
 const DEFAULT_MODEL_BY_PROVIDER = {
-  gemini:     'gemini-2.0-flash',
+  gemini:     'gemini-2.5-flash-lite',
   deepseek:   'deepseek-chat',
   anthropic:  'claude-haiku-4-5-20251001',
   openai:     'gpt-4o-mini',
 };
 
+// Gemini is the default/primary provider (cost: AI Studio free tier → $0 start).
 const DEFAULT_PROVIDER          = 'gemini';
 const DEFAULT_FALLBACK_PROVIDER = 'anthropic';
 

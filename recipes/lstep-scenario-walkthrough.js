@@ -4,7 +4,7 @@
 /** @type {import('./_types.js').Recipe} */
 export const recipe = {
   id: 'lstep-scenario-walkthrough',
-  category: 'first-setup',
+  category: 'btob-tool',
   targetHost: 'manager.linestep.net',
   applicableUrlPatterns: [
     'https://manager.linestep.net/*',
@@ -14,8 +14,8 @@ export const recipe = {
     ja: 'Lステップでシナリオを探して編集する',
   },
   description: {
-    en: 'Guides an Lステップ client through logging in, locating a delivered scenario in the scenario list, opening it in the editor, and making a simple text edit — reducing "how do I operate this?" support requests.',
-    ja: 'Lステップにログインし、代行業者から納品されたシナリオを一覧から探してエディタで開き、テキストを編集するまでを案内します。「操作方法がわからない」というサポート問い合わせを削減します。',
+    en: 'Guides an Lステップ client through logging in, locating a delivered scenario in the scenario list, opening it in the editor, and making a simple text edit — reducing "how do I operate this?" support requests. Note: scenarios are built per account by your agency, so your scenario list and editor layout may differ from this recipe — record your own version if it does not match.',
+    ja: 'Lステップにログインし、代行業者から納品されたシナリオを一覧から探してエディタで開き、テキストを編集するまでを案内します。「操作方法がわからない」というサポート問い合わせを削減します。注意: シナリオは代行業者がアカウントごとに構築するため、シナリオ一覧やエディタの画面はこのレシピと異なる場合があります。合わない場合は録画機能で自社専用版を作成してください。',
   },
   estimatedSteps: 8,
   estimatedSeconds: 360,

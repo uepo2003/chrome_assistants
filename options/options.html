@@ -62,18 +62,21 @@
         <select id="model-select" class="qc-select">
           <!-- Options populated by JS based on selected provider -->
         </select>
-        <p class="qc-field__hint" id="model-hint" data-i18n="options.provider.modelHint">Model used for the selected provider.</p>
+        <p class="qc-field__hint" id="model-hint" data-i18n="options.provider.modelHint">Model used for the selected provider. Default: gemini-2.5-flash-lite.</p>
       </div>
     </section>
 
     <!-- Section 1b: API keys -->
     <section class="qc-card section" aria-labelledby="sec-key">
       <h2 id="sec-key" class="section__title" data-i18n="options.sec.apiKeys">API Keys</h2>
-      <p class="section__desc" data-i18n="options.apiKeys.desc">Enter an API key for each provider you want to use. Keys are stored only in your browser.</p>
+      <p class="section__desc" data-i18n="options.apiKeys.desc">Start with a Gemini key (free on Google AI Studio) — it's the default. Other providers are optional fallbacks. Keys are stored only in your browser.</p>
 
-      <!-- Gemini key -->
+      <!-- Gemini key (primary / default) -->
       <div class="qc-field provider-key-field" id="key-field-gemini">
-        <label class="qc-field__label" for="api-key-gemini" data-i18n="options.apiKeys.gemini.label">Gemini API key</label>
+        <label class="qc-field__label" for="api-key-gemini">
+          <span data-i18n="options.apiKeys.gemini.label">Gemini API key</span>
+          <span class="tag tag--primary" data-i18n="options.apiKeys.gemini.primaryTag">Primary · default</span>
+        </label>
         <div class="key-row">
           <input id="api-key-gemini" class="qc-input key-row__input" type="password"
             autocomplete="off" spellcheck="false" placeholder="AIza..." />
@@ -107,7 +110,10 @@
 
       <!-- Anthropic key -->
       <div class="qc-field provider-key-field" id="key-field-anthropic">
-        <label class="qc-field__label" for="api-key" data-i18n="options.sec.apiKey">Anthropic API key</label>
+        <label class="qc-field__label" for="api-key">
+          <span data-i18n="options.sec.apiKey">Anthropic API key</span>
+          <span class="tag tag--muted" data-i18n="options.apiKeys.anthropic.fallbackTag">Fallback (optional)</span>
+        </label>
         <div class="key-row">
           <input
             id="api-key"

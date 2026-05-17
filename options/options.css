@@ -281,6 +281,16 @@ fieldset.group > legend {
   vertical-align: 2px;
 }
 
+/* Gemini-first emphasis: primary provider stands out, fallback is dimmed. */
+.tag--primary {
+  color: var(--at-accent-fg, #fff);
+  background: var(--at-accent, #2563eb);
+  border-color: transparent;
+}
+.tag--muted {
+  opacity: 0.7;
+}
+
 /* ---------- Checkbox -------------------------------------------- */
 .checkbox {
   display: flex;

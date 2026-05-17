@@ -4,7 +4,7 @@
 /** @type {import('./_types.js').Recipe} */
 export const recipe = {
   id: 'slack-create-channel',
-  category: 'first-setup',
+  category: 'btob-tool',
   targetHost: '*.slack.com',
   applicableUrlPatterns: [
     'https://app.slack.com/*',
@@ -14,8 +14,8 @@ export const recipe = {
     ja: 'Slack でチャンネルを作ってメンバーを招待する',
   },
   description: {
-    en: 'Guides a non-IT user through creating a new Slack channel (public or private), writing a purpose, and inviting teammates — using the Slack web app at app.slack.com.',
-    ja: 'IT に不慣れなユーザーが Slack の Web アプリで新しいチャンネル（公開または非公開）を作成し、目的を記入してメンバーを招待するまでを案内します。',
+    en: 'Guides a non-IT user through creating a new Slack channel (public or private), writing a purpose, and inviting teammates — using the Slack web app at app.slack.com. Note: your workspace, sidebar, and member list depend on your own Slack workspace, so the screen may differ from this recipe — record your own version if it does not match.',
+    ja: 'IT に不慣れなユーザーが Slack の Web アプリで新しいチャンネル（公開または非公開）を作成し、目的を記入してメンバーを招待するまでを案内します。注意: ワークスペース・サイドバー・メンバー一覧はご利用の Slack ワークスペースに依存するため、画面はこのレシピと異なる場合があります。合わない場合は録画機能で自社専用版を作成してください。',
   },
   estimatedSteps: 8,
   estimatedSeconds: 300,

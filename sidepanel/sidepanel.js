@@ -34,6 +34,14 @@
     (MSG && MSG.GET_RECIPE_CATALOG) || "AT_GET_RECIPE_CATALOG";
   const MSG_RECIPE_HEALTH_UPDATED =
     (MSG && MSG.RECIPE_HEALTH_UPDATED) || "AT_RECIPE_HEALTH_UPDATED";
+  const RMSG = globalThis.__AT_RECORDER_MSG__ || {
+    START: "AT_RECORDER_START",
+    STOP: "AT_RECORDER_STOP",
+    EVENT: "AT_RECORDER_EVENT",
+    SAVE: "AT_RECORDER_SAVE",
+    EXPORT: "AT_RECORDER_EXPORT",
+    SKIPPED: "AT_RECORDER_SKIPPED",
+  };
   // sec5-background ships PAUSED_FOR_HUMAN with bilingual `why` (see
   // common/messages.js — payload: { recipeId, when, why: { en, ja } }).
   const MSG_PAUSED_FOR_HUMAN =
@@ -46,7 +54,11 @@
   const RUN_MODE_KEY =
     (globalThis.__AT_KEYS__ && globalThis.__AT_KEYS__.RUN_MODE) || "at_run_mode";
 
-  const CATEGORIES = ["first-setup", "connect", "deploy", "account", "key-issue"];
+  // BtoB pivot: "btob-tool" is pinned first so kintone / Chatwork / Slack /
+  // Lステップ recipes are the first thing users see (catalog group order +
+  // category chip order both derive from this list).
+  const CATEGORIES = ["btob-tool", "first-setup", "connect", "deploy", "account", "key-issue"];
+  const BTOB_CATEGORY = "btob-tool";
 
   // ---------------------------------------------------------------- state ---
   const state = {
@@ -122,9 +134,23 @@
     catalogEmpty: $("catalogEmpty"),
     catalogCount: $("catalogCount"),
     openEndedCta: $("openEndedCta"),
+    recorderCta: $("recorderCta"),
     backToCatalogBtn: $("backToCatalogBtn"),
     openEndedTag: $("openEndedTag"),
     recipeCardTemplate: $("recipe-card"),
+
+    // Recipe Recorder modal (v0.4)
+    recorderModal: $("recorderModal"),
+    recorderNameEn: $("recorderNameEn"),
+    recorderNameJa: $("recorderNameJa"),
+    recorderHost: $("recorderHost"),
+    recorderDescEn: $("recorderDescEn"),
+    recorderDescJa: $("recorderDescJa"),
+    recorderCategory: $("recorderCategory"),
+    recorderStatus: $("recorderStatus"),
+    recorderStartBtn: $("recorderStartBtn"),
+    recorderStopBtn: $("recorderStopBtn"),
+    recorderExportBtn: $("recorderExportBtn"),
 
     // Live Run
     liveRun: $("liveRun"),
@@ -158,6 +184,7 @@
     detailPrereqSection: $("recipeDetailPrereqSection"),
     detailHandoff: $("recipeDetailHandoff"),
     detailHandoffSection: $("recipeDetailHandoffSection"),
+    detailBtobHint: $("recipeDetailBtobHint"),
     detailRunBtn: $("recipeDetailRunBtn"),
 
     previewModal: $("recipePreviewModal"),
@@ -203,6 +230,21 @@
     } catch (_e) {
       /* noop */
     }
+  }
+
+  // Request/response variant — resolves with the background's sendResponse.
+  function sendAsync(type, payload) {
+    return new Promise((resolve) => {
+      try {
+        const msg = Object.assign({ type, tabId: state.tabId }, payload || {});
+        chrome.runtime.sendMessage(msg, (resp) => {
+          void chrome.runtime.lastError;
+          resolve(resp || null);
+        });
+      } catch (_e) {
+        resolve(null);
+      }
+    });
   }
 
   // -------------------------------------------------------- state transitions
@@ -696,6 +738,21 @@
     });
   }
 
+  // Search relevance score. BtoB pivot: recipes in the "btob-tool" category
+  // get a +1 boost so an ambiguous query ("task", "channel") surfaces the
+  // BtoB recipe above other categories. (spec: btob-recipe-pack)
+  function scoreRecipe(r, q) {
+    let score = 0;
+    const title = bi(r.title).toLowerCase();
+    const desc = bi(r.description).toLowerCase();
+    const host = (r.targetHost || "").toLowerCase();
+    if (title.includes(q)) score += 3;
+    if (host.includes(q)) score += 2;
+    if (desc.includes(q)) score += 1;
+    if (r.category === BTOB_CATEGORY) score += 1;
+    return score;
+  }
+
   function firstSentence(s) {
     if (!s) return "";
     const m = String(s).match(/^[\s\S]*?[.。!?！？](\s|$)/);
@@ -817,6 +874,24 @@
     }
     if (dom.catalogEmpty) dom.catalogEmpty.hidden = true;
 
+    // When searching, render a single relevance-ranked list so the +1 BtoB
+    // boost actually reorders results across categories (spec scenario:
+    // "task" → Chatwork above a deploy recipe). No query → grouped catalog
+    // with the btob-tool group pinned first.
+    const q = (state.searchQuery || "").trim().toLowerCase();
+    if (q) {
+      const ranked = filtered
+        .map((r) => ({ r, s: scoreRecipe(r, q) }))
+        .sort((a, b) => b.s - a.s)
+        .map((x) => x.r);
+      const grid = el("div", { className: "catalog__grid" });
+      ranked.forEach((r) => grid.appendChild(buildRecipeCard(r)));
+      dom.catalogGroups.appendChild(
+        el("section", { className: "catalog__group" }, [grid])
+      );
+      return;
+    }
+
     const byCat = new Map();
     filtered.forEach((r) => {
       const arr = byCat.get(r.category) || [];
@@ -897,6 +972,14 @@
       }
     }
 
+    // BtoB recipes: show the "your screen may differ — record your own"
+    // helper (spec: btob-recipe-pack). Hidden for non-BtoB recipes.
+    if (dom.detailBtobHint) {
+      const isBtob = recipe.category === BTOB_CATEGORY;
+      dom.detailBtobHint.hidden = !isBtob;
+      if (isBtob) dom.detailBtobHint.textContent = tr("catalog.detail.btob.recorderHint");
+    }
+
     if (dom.detailRunBtn) {
       dom.detailRunBtn.disabled = !!recipe.disabled;
       dom.detailRunBtn.setAttribute("aria-disabled", recipe.disabled ? "true" : "false");
@@ -963,6 +1046,122 @@
     try { globalThis.__QC_UI__.modal.close(dom.previewModal); } catch (_e) {}
   }
 
+  // -------- Recipe Recorder (BtoB pivot Phase 3, v0.4) --------------------
+  const recorderState = { recording: false, draftId: null, lastRecipe: null };
+
+  function recorderSetStatus(text, kind) {
+    if (!dom.recorderStatus) return;
+    dom.recorderStatus.textContent = text || "";
+    dom.recorderStatus.setAttribute("data-state", kind || "");
+  }
+
+  function recorderFieldsDisabled(disabled) {
+    [
+      dom.recorderNameEn, dom.recorderNameJa, dom.recorderHost,
+      dom.recorderDescEn, dom.recorderDescJa, dom.recorderCategory,
+    ].forEach((f) => { if (f) f.disabled = !!disabled; });
+  }
+
+  function recorderResetUi() {
+    recorderState.recording = false;
+    recorderState.draftId = null;
+    recorderState.lastRecipe = null;
+    if (dom.recorderStartBtn) dom.recorderStartBtn.hidden = false;
+    if (dom.recorderStopBtn) dom.recorderStopBtn.hidden = true;
+    if (dom.recorderExportBtn) dom.recorderExportBtn.hidden = true;
+    recorderFieldsDisabled(false);
+    recorderSetStatus("");
+  }
+
+  function openRecorderModal() {
+    recorderResetUi();
+    try { globalThis.__QC_UI__.modal.open(dom.recorderModal); } catch (_e) {}
+  }
+
+  function closeRecorderModal() {
+    if (recorderState.recording) { recorderStop(); }
+    try { globalThis.__QC_UI__.modal.close(dom.recorderModal); } catch (_e) {}
+  }
+
+  async function recorderStart() {
+    const nameEn = (dom.recorderNameEn && dom.recorderNameEn.value.trim()) || "";
+    const nameJa = (dom.recorderNameJa && dom.recorderNameJa.value.trim()) || "";
+    const host = (dom.recorderHost && dom.recorderHost.value.trim()) || "";
+    if (!nameEn || !nameJa || !host) {
+      recorderSetStatus(tr("recorder.fieldHost"), "fail");
+      return;
+    }
+    const meta = {
+      nameEn,
+      nameJa,
+      host,
+      descEn: (dom.recorderDescEn && dom.recorderDescEn.value.trim()) || "",
+      descJa: (dom.recorderDescJa && dom.recorderDescJa.value.trim()) || "",
+      category: (dom.recorderCategory && dom.recorderCategory.value) || "btob-tool",
+    };
+    const resp = await sendAsync(RMSG.SAVE, { meta });
+    if (!resp || !resp.ok) {
+      recorderSetStatus(
+        resp && resp.error === "no_content_script"
+          ? tr("error.noContentScript")
+          : tr("error.recipeUnavailable"),
+        "fail"
+      );
+      return;
+    }
+    recorderState.recording = true;
+    recorderState.draftId = resp.recipeDraftId;
+    if (dom.recorderStartBtn) dom.recorderStartBtn.hidden = true;
+    if (dom.recorderStopBtn) dom.recorderStopBtn.hidden = false;
+    if (dom.recorderExportBtn) dom.recorderExportBtn.hidden = true;
+    recorderFieldsDisabled(true);
+    recorderSetStatus(tr("recorder.recording"), "pending");
+  }
+
+  async function recorderStop() {
+    if (!recorderState.recording) return;
+    recorderState.recording = false;
+    const resp = await sendAsync(RMSG.STOP, {});
+    if (dom.recorderStopBtn) dom.recorderStopBtn.hidden = true;
+    if (dom.recorderStartBtn) dom.recorderStartBtn.hidden = false;
+    recorderFieldsDisabled(false);
+    if (resp && resp.ok && resp.recipe) {
+      recorderState.lastRecipe = resp.recipe;
+      if (dom.recorderExportBtn) dom.recorderExportBtn.hidden = false;
+      recorderSetStatus(tr("recorder.saved"), "ok");
+    } else {
+      recorderSetStatus(tr("error.recipeUnavailable"), "fail");
+    }
+  }
+
+  async function recorderExport() {
+    const recipe = recorderState.lastRecipe;
+    if (!recipe) return;
+    const resp = await sendAsync(RMSG.EXPORT, { id: recipe.id });
+    const json = (resp && resp.ok && resp.json)
+      ? resp.json
+      : JSON.stringify(recipe, null, 2);
+    // A drop-in ESM module so the file can be saved straight to
+    // recipes/_user/<id>.js and picked up by _loader.js.
+    const moduleText =
+      "// Recorded with Quickstart Copilot Recipe Recorder\n" +
+      "/** @type {import('../_types.js').Recipe} */\n" +
+      "export const recipe = " + json + ";\n";
+    try { await navigator.clipboard.writeText(moduleText); } catch (_e) {}
+    try {
+      const blob = new Blob([moduleText], { type: "text/javascript" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = recipe.id + ".js";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_e) {} }, 1000);
+    } catch (_e) {}
+    recorderSetStatus(tr("recorder.exportCopied"), "ok");
+  }
+
   // -------- runRecipe flow -------------------------------------------------
   function runRecipe(recipe) {
     if (!recipe || recipe.disabled) return;
@@ -1008,11 +1207,13 @@
   }
 
   // ============================================================ upgrade =====
+  // v0.4 (BtoB pivot / Gemini-first). New flag runs alongside the legacy
+  // at_v03_upgrade_seen so v0.3 users still see the v0.4 notice exactly once.
   function maybeShowUpgradeBanner() {
     try {
-      chrome.storage.local.get("at_v03_upgrade_seen", (out) => {
+      chrome.storage.local.get("at_v04_upgrade_seen", (out) => {
         void chrome.runtime.lastError;
-        const seen = out && out.at_v03_upgrade_seen;
+        const seen = out && out.at_v04_upgrade_seen;
         if (!seen && dom.upgradeBanner) {
           dom.upgradeBanner.hidden = false;
         }
@@ -1021,7 +1222,7 @@
   }
   function dismissUpgradeBanner() {
     try {
-      chrome.storage.local.set({ at_v03_upgrade_seen: true }, () => {
+      chrome.storage.local.set({ at_v04_upgrade_seen: true }, () => {
         void chrome.runtime.lastError;
       });
     } catch (_e) {}
@@ -1264,6 +1465,12 @@
       loadCatalog();
       return;
     }
+    if (msg.type === RMSG.SKIPPED) {
+      if (recorderState.recording) {
+        recorderSetStatus(tr("recorder.disabled.passwordSkipped"), "warn");
+      }
+      return;
+    }
     if (msg.tabId != null && state.tabId != null && msg.tabId !== state.tabId) return;
     if (isDuplicate(msg)) return;
 
@@ -1369,6 +1576,14 @@
         setRunState("done");
         break;
       case MSG.RUN_ABORTED:
+        if (msg.reason === "no_content_script") {
+          // Runtime resilience (spec): friendly localized message + drop
+          // straight back to the catalog instead of a stuck "running" UI.
+          appendSystem(tr("error.noContentScript"));
+          setRunState("idle");
+          showCatalog();
+          break;
+        }
         appendSystem(tr("system.runAborted", { reason: msg.reason || "" }));
         if (dom.liveHeading) dom.liveHeading.textContent = tr("live.aborted.title");
         if (dom.liveSummary) dom.liveSummary.textContent = tr("live.aborted.body");
@@ -1565,10 +1780,17 @@
     if (dom.openEndedCta) dom.openEndedCta.addEventListener("click", showOpenEnded);
     if (dom.backToCatalogBtn) dom.backToCatalogBtn.addEventListener("click", showCatalog);
 
+    // Recipe Recorder.
+    if (dom.recorderCta) dom.recorderCta.addEventListener("click", openRecorderModal);
+    if (dom.recorderStartBtn) dom.recorderStartBtn.addEventListener("click", recorderStart);
+    if (dom.recorderStopBtn) dom.recorderStopBtn.addEventListener("click", recorderStop);
+    if (dom.recorderExportBtn) dom.recorderExportBtn.addEventListener("click", recorderExport);
+
     // Modal action buttons.
     if (globalThis.__QC_UI__ && globalThis.__QC_UI__.modal) {
       try { globalThis.__QC_UI__.modal.bind(dom.detailModal); } catch (_e) {}
       try { globalThis.__QC_UI__.modal.bind(dom.previewModal); } catch (_e) {}
+      try { globalThis.__QC_UI__.modal.bind(dom.recorderModal); } catch (_e) {}
     }
     if (dom.detailRunBtn) {
       dom.detailRunBtn.addEventListener("click", () => {
@@ -1643,7 +1865,7 @@
   // falsy, the wizard takes over — hiding catalog/live/composer/upgrade —
   // until the user finishes or chooses "Decide later".
   //   • Step 1 — Language (immediate at_lang via __AT_I18N__.setLang)
-  //   • Step 2 — Anthropic API key (with "Skip — fewer recipes" option)
+  //   • Step 2 — Gemini API key (skippable: Guide-mode demo works without it)
   //   • Step 3 — Pick a beginner recipe (or "Decide later")
   // Step index is persisted to at_first_run_step on every transition so a
   // sidepanel close + re-open resumes where the user left off.
@@ -1653,9 +1875,13 @@
     STEP: "at_first_run_step",
     SKIPPED_KEY: "at_first_run_skipped_key",
     LANG: "at_lang",
-    API_KEY: "at_api_key",
+    // Gemini-first: First-Run saves the Gemini-scoped key, never at_api_key
+    // (which stays reserved for Anthropic / legacy). See spec gemini-first-defaults.
+    API_KEY_GEMINI: "at_api_key_gemini",
+    PROVIDER: "at_provider",
     MODEL: "at_model",
   };
+  const FIRSTRUN_TEST_MODEL = "gemini-2.5-flash-lite";
   const firstRunState = {
     active: false,
     step: 0,
@@ -1736,7 +1962,7 @@
     const stored = await firstRunGetStorage([
       FIRSTRUN_KEYS.DONE,
       FIRSTRUN_KEYS.STEP,
-      FIRSTRUN_KEYS.API_KEY,
+      FIRSTRUN_KEYS.API_KEY_GEMINI,
     ]);
     if (stored[FIRSTRUN_KEYS.DONE] === true) return false;
 
@@ -1746,8 +1972,8 @@
         ? savedStep
         : 0;
     firstRunState.apiKey =
-      typeof stored[FIRSTRUN_KEYS.API_KEY] === "string"
-        ? stored[FIRSTRUN_KEYS.API_KEY]
+      typeof stored[FIRSTRUN_KEYS.API_KEY_GEMINI] === "string"
+        ? stored[FIRSTRUN_KEYS.API_KEY_GEMINI]
         : "";
     firstRunEnter();
     return true;
@@ -1948,12 +2174,16 @@
       return;
     }
     if (firstRunState.step === 1) {
-      // Persist API key (may be empty — user can come back via reset).
+      // Persist Gemini API key (may be empty — user can come back via reset).
+      // When a key is present we also pin the provider to gemini. We never
+      // write at_api_key (Anthropic slot). See spec gemini-first-defaults.
       const apiKey = firstRunState.apiKey || "";
-      firstRunSetStorage({
-        [FIRSTRUN_KEYS.API_KEY]: apiKey,
+      const patch = {
+        [FIRSTRUN_KEYS.API_KEY_GEMINI]: apiKey,
         [FIRSTRUN_KEYS.SKIPPED_KEY]: apiKey.length === 0,
-      });
+      };
+      if (apiKey.length > 0) patch[FIRSTRUN_KEYS.PROVIDER] = "gemini";
+      firstRunSetStorage(patch);
       firstRunGoto(2);
       return;
     }
@@ -2003,29 +2233,29 @@
     }, TIMEOUT_MS);
 
     const stored = await firstRunGetStorage(FIRSTRUN_KEYS.MODEL);
-    const model = (stored && stored[FIRSTRUN_KEYS.MODEL]) || "claude-haiku-4-5-20251001";
+    const model = (stored && stored[FIRSTRUN_KEYS.MODEL]) || FIRSTRUN_TEST_MODEL;
 
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const url =
+        "https://generativelanguage.googleapis.com/v1beta/models/" +
+        encodeURIComponent(model) +
+        ":generateContent?key=" +
+        encodeURIComponent(key);
+      const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "x-api-key": key,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          model,
-          max_tokens: 16,
-          messages: [{ role: "user", content: "ping" }],
+          contents: [{ role: "user", parts: [{ text: "ping" }] }],
+          generationConfig: { maxOutputTokens: 8, temperature: 0 },
         }),
         signal: abort.signal,
       });
       if (response.ok) {
         // Persist the key on successful test so a later "Next" can't overwrite
-        // with empty if the user clears the field after testing.
+        // with empty if the user clears the field after testing. Pin provider.
         await firstRunSetStorage({
-          [FIRSTRUN_KEYS.API_KEY]: key,
+          [FIRSTRUN_KEYS.API_KEY_GEMINI]: key,
+          [FIRSTRUN_KEYS.PROVIDER]: "gemini",
           [FIRSTRUN_KEYS.SKIPPED_KEY]: false,
         });
         if (fr.testResult) {

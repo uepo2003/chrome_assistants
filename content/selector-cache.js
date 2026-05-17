@@ -29,8 +29,12 @@
 
   // ----- constants ---------------------------------------------------------
   var STORAGE_KEY = "at_selector_cache";
-  // Hard cap on entries kept in storage (LRU-ish eviction by ts).
-  var MAX_ENTRIES = 300;
+  // Hard cap on entries kept in storage. Fixed at 200 by spec
+  // (selector-cache: "キャッシュサイズ上限と LRU 整理"). Eviction is LRU by
+  // `ts`, which is refreshed to Date.now() on every remember() and hit() —
+  // i.e. `ts` IS the lastHitAt the spec sorts on. When a remember() would
+  // exceed 200, the oldest-lastHitAt entries are dropped first.
+  var MAX_ENTRIES = 200;
 
   // ----- in-memory state ---------------------------------------------------
   // null  = not yet loaded.

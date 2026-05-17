@@ -81,7 +81,7 @@
 
   const DEFAULTS = Object.freeze({
     MODE: 'hybrid',
-    MODEL: 'gemini-2.0-flash',       // default model for default provider
+    MODEL: 'gemini-2.5-flash-lite',  // default model for default provider
     SPEED: 'normal',
     AUTO_START: false,
     PROVIDER: 'gemini',

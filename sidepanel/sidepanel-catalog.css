@@ -270,10 +270,34 @@
 .catalog__footer {
   margin-top: var(--at-sp-5);
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--at-sp-2);
   justify-content: center;
   padding-top: var(--at-sp-3);
   border-top: 1px solid var(--at-border);
 }
+
+/* BtoB recipe detail hint + recorder status line (v0.4). */
+.recipe-detail__btob-hint {
+  margin-top: var(--at-sp-3);
+  padding: var(--at-sp-2) var(--at-sp-3);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--at-fg-muted);
+  background: var(--at-bg-sunken);
+  border: 1px solid var(--at-border);
+  border-radius: var(--at-radius-2);
+}
+
+.recorder__status {
+  min-height: 1.2em;
+  font-size: 12px;
+  color: var(--at-fg-muted);
+}
+.recorder__status[data-state="ok"] { color: var(--at-success, #16a34a); }
+.recorder__status[data-state="fail"] { color: var(--at-danger, #dc2626); }
+.recorder__status[data-state="warn"] { color: var(--at-warning, #d97706); }
+.recorder__status[data-state="pending"] { color: var(--at-accent, #2563eb); }
 
 /* ---------- Recipe card ------------------------------------------------ */
 

@@ -35,7 +35,7 @@
 /**
  * @typedef {Object} Recipe
  * @property {string} id                              kebab-case, unique across catalog.
- * @property {'first-setup'|'connect'|'deploy'|'account'|'key-issue'} category
+ * @property {'btob-tool'|'first-setup'|'connect'|'deploy'|'account'|'key-issue'} category
  * @property {string} targetHost                      e.g. 'github.com', wildcards allowed ('*.vercel.com').
  * @property {string[]} [applicableUrlPatterns]
  * @property {BilingualText} title
@@ -59,5 +59,7 @@ export const REQUIRED_FIELDS = [
   'humanHandoffPoints', 'successCriteria', 'lastVerifiedAt',
 ];
 
-export const VALID_CATEGORIES = ['first-setup', 'connect', 'deploy', 'account', 'key-issue'];
+// 'btob-tool' = BtoB SaaS operation recipes (kintone / Lステップ / Chatwork /
+// Slack …). Pinned to the top of the catalog + search-boosted (BtoB pivot).
+export const VALID_CATEGORIES = ['btob-tool', 'first-setup', 'connect', 'deploy', 'account', 'key-issue'];
 export const VALID_DIFFICULTIES = ['beginner', 'intermediate', 'advanced'];

@@ -71,7 +71,7 @@
         </div>
       </header>
 
-      <!-- v0.3 migration upgrade banner. Shown once until dismissed. -->
+      <!-- v0.4 migration upgrade banner. Shown once until dismissed. -->
       <aside
         id="upgradeBanner"
         class="upgrade-banner"
@@ -81,9 +81,9 @@
         hidden
       >
         <div class="upgrade-banner__body">
-          <strong class="upgrade-banner__title" data-i18n="upgrade.banner.title">We redesigned things</strong>
-          <p class="upgrade-banner__text" data-i18n="upgrade.banner.body">
-            Open-ended mode is still available from the catalog footer.
+          <strong class="upgrade-banner__title" data-i18n="upgrade.banner.v04.title">New: BtoB tool recipes + Gemini default</strong>
+          <p class="upgrade-banner__text" data-i18n="upgrade.banner.v04.body">
+            Recipes for kintone, Chatwork, Slack and more are now at the top of the catalog. Gemini is the new default AI — your existing settings are kept.
           </p>
         </div>
         <button
@@ -184,6 +184,12 @@
         >No recipes match your search.</p>
 
         <footer class="catalog__footer">
+          <button
+            type="button"
+            id="recorderCta"
+            class="qc-btn qc-btn--ghost"
+            data-i18n="recorder.cta"
+          >Record your own recipe</button>
           <button
             type="button"
             id="openEndedCta"
@@ -363,12 +369,12 @@
             </div>
           </div>
 
-          <!-- Step 2 — API key -->
+          <!-- Step 2 — Gemini API key -->
           <div class="firstrun__step" data-step="1" hidden>
-            <h2 class="firstrun__title" data-i18n="firstRun.step2.title">Add your Anthropic API key</h2>
-            <p class="firstrun__body" data-i18n="firstRun.step2.body">Required for AI-driven steps. Stored only in your browser.</p>
+            <h2 class="firstrun__title" data-i18n="firstRun.step2.title">Add your Gemini API key</h2>
+            <p class="firstrun__body" data-i18n="firstRun.step2.body">Gemini is the default AI. The Google AI Studio free tier lets you start at $0.</p>
             <div class="firstrun__field qc-field">
-              <label class="qc-field__label" for="firstRunApiKey" data-i18n="options.sec.apiKey">Anthropic API key</label>
+              <label class="qc-field__label" for="firstRunApiKey" data-i18n="firstRun.step2.geminiLabel">Gemini API key</label>
               <div class="firstrun__key-row">
                 <input
                   type="password"
@@ -376,8 +382,8 @@
                   class="qc-input firstrun__key-input"
                   autocomplete="off"
                   spellcheck="false"
-                  data-i18n-placeholder="options.apiKey.placeholder"
-                  placeholder="sk-ant-..."
+                  data-i18n-placeholder="firstRun.step2.geminiPlaceholder"
+                  placeholder="AIza..."
                 />
                 <button
                   type="button"
@@ -387,7 +393,16 @@
                   disabled
                 >Test connection</button>
               </div>
-              <p class="qc-field__hint" data-i18n="options.apiKey.helper">Stored locally in your browser. Never sent anywhere except api.anthropic.com.</p>
+              <p class="qc-field__hint" data-i18n="firstRun.step2.geminiHint">Stored locally in your browser. Sent only to generativelanguage.googleapis.com.</p>
+              <p class="qc-field__hint">
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  id="firstRunGetKeyLink"
+                  data-i18n="firstRun.step2.getKeyLink"
+                >Get a free Gemini API key →</a>
+              </p>
               <p
                 class="firstrun__test-result"
                 id="firstRunTestResult"
@@ -521,6 +536,12 @@
             <h3 class="recipe-detail__heading" data-i18n="catalog.detail.humanHandoff">Human checkpoints</h3>
             <ul class="recipe-detail__list" id="recipeDetailHandoff"></ul>
           </section>
+          <p
+            class="recipe-detail__btob-hint"
+            id="recipeDetailBtobHint"
+            data-i18n="catalog.detail.btob.recorderHint"
+            hidden
+          ></p>
         </div>
         <footer class="qc-modal__footer">
           <button
@@ -594,9 +615,92 @@
       </div>
     </div>
 
+    <!-- Recipe Recorder modal (BtoB pivot Phase 3, v0.4) -->
+    <div
+      class="qc-modal"
+      id="recorderModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="recorderModalTitle"
+      data-open="false"
+      hidden
+    >
+      <div class="qc-modal__backdrop" data-qc-close></div>
+      <div class="qc-modal__dialog">
+        <header class="qc-modal__head">
+          <h2 class="qc-modal__title" id="recorderModalTitle" data-i18n="recorder.modalTitle">Record a recipe</h2>
+          <button
+            type="button"
+            class="qc-btn qc-btn--ghost qc-btn--sm"
+            data-qc-close
+            data-i18n="recorder.cancel"
+            data-i18n-aria-label="recorder.cancel"
+            aria-label="Cancel"
+          >Cancel</button>
+        </header>
+        <div class="qc-modal__body qc-stack-3">
+          <div class="qc-field">
+            <label class="qc-field__label" for="recorderNameEn" data-i18n="recorder.fieldNameEn">Recipe name (English)</label>
+            <input id="recorderNameEn" class="qc-input" type="text" autocomplete="off" />
+          </div>
+          <div class="qc-field">
+            <label class="qc-field__label" for="recorderNameJa" data-i18n="recorder.fieldNameJa">Recipe name (日本語)</label>
+            <input id="recorderNameJa" class="qc-input" type="text" autocomplete="off" />
+          </div>
+          <div class="qc-field">
+            <label class="qc-field__label" for="recorderHost" data-i18n="recorder.fieldHost">Target host (e.g. *.cybozu.com)</label>
+            <input id="recorderHost" class="qc-input" type="text" autocomplete="off" placeholder="*.cybozu.com" />
+          </div>
+          <div class="qc-field">
+            <label class="qc-field__label" for="recorderDescEn" data-i18n="recorder.fieldDescEn">Description (English, optional)</label>
+            <input id="recorderDescEn" class="qc-input" type="text" autocomplete="off" />
+          </div>
+          <div class="qc-field">
+            <label class="qc-field__label" for="recorderDescJa" data-i18n="recorder.fieldDescJa">Description (日本語, optional)</label>
+            <input id="recorderDescJa" class="qc-input" type="text" autocomplete="off" />
+          </div>
+          <div class="qc-field">
+            <label class="qc-field__label" for="recorderCategory" data-i18n="recorder.fieldCategory">Category</label>
+            <select id="recorderCategory" class="qc-select">
+              <option value="btob-tool" selected data-i18n="catalog.category.btob-tool">BtoB tools</option>
+              <option value="first-setup" data-i18n="catalog.category.first-setup">First setup</option>
+              <option value="connect" data-i18n="catalog.category.connect">Connect</option>
+              <option value="deploy" data-i18n="catalog.category.deploy">Deploy</option>
+              <option value="account" data-i18n="catalog.category.account">Account</option>
+              <option value="key-issue" data-i18n="catalog.category.key-issue">API keys</option>
+            </select>
+          </div>
+          <p class="recorder__status" id="recorderStatus" role="status" aria-live="polite"></p>
+        </div>
+        <footer class="qc-modal__footer">
+          <button
+            type="button"
+            id="recorderStartBtn"
+            class="qc-btn qc-btn--primary"
+            data-i18n="recorder.start"
+          >Start recording</button>
+          <button
+            type="button"
+            id="recorderStopBtn"
+            class="qc-btn qc-btn--primary"
+            data-i18n="recorder.stop"
+            hidden
+          >Stop recording</button>
+          <button
+            type="button"
+            id="recorderExportBtn"
+            class="qc-btn qc-btn--secondary"
+            data-i18n="recorder.export"
+            hidden
+          >Export JSON</button>
+        </footer>
+      </div>
+    </div>
+
     <script src="../common/error-capture.js"></script>
     <script src="../common/i18n.js"></script>
     <script src="../common/messages.js"></script>
+    <script src="../common/recorder-messages.js"></script>
     <script src="../common/components.js"></script>
     <script src="../common/feature-flags.js"></script>
     <script src="sidepanel.js"></script>

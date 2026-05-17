@@ -4,7 +4,7 @@
 /** @type {import('./_types.js').Recipe} */
 export const recipe = {
   id: 'kintone-create-app-record',
-  category: 'first-setup',
+  category: 'btob-tool',
   targetHost: '*.cybozu.com',
   applicableUrlPatterns: [
     'https://*.cybozu.com/k/*',
@@ -15,8 +15,8 @@ export const recipe = {
     ja: 'kintone アプリに新しいレコードを追加する',
   },
   description: {
-    en: 'Logs you into kintone, opens the target app, and guides you to create a new record — perfect for teaching new staff their first data entry.',
-    ja: 'kintone にログインし、対象アプリを開いて新しいレコードを登録するまでを案内します。新人スタッフへの操作説明にご活用ください。',
+    en: 'Logs you into kintone, opens the target app, and guides you to create a new record — perfect for teaching new staff their first data entry. Note: kintone forms are customized per organization, so your fields and layout may differ from this recipe — record your own version if it does not match.',
+    ja: 'kintone にログインし、対象アプリを開いて新しいレコードを登録するまでを案内します。新人スタッフへの操作説明にご活用ください。注意: kintone のフォームは組織ごとにカスタマイズされるため、項目や画面レイアウトはこのレシピと異なる場合があります。合わない場合は録画機能で自社専用版を作成してください。',
   },
   estimatedSteps: 8,
   estimatedSeconds: 240,

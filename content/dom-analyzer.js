@@ -16,6 +16,11 @@
   "use strict";
 
   // ----- constants ---------------------------------------------------------
+  // Interactive-only extraction is FIXED BY SPEC (dom-compression: "DOM
+  // スナップショットはインタラクティブ要素のみを抽出する"). snapshot() must
+  // never return whole-page HTML / innerText. These caps keep the payload
+  // inside the prompt char budgets (quick-skip 3000 / step 4000) enforced in
+  // background/prompts.js. Don't loosen without updating openspec.
   var MAX_INTERACTIVES = 40;
   // Pre-trim text to 80 chars — the prompt builder caps at 120 but we send
   // less so the JSON payload is smaller before it even reaches the prompt.

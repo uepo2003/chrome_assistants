@@ -4,7 +4,7 @@
 /** @type {import('./_types.js').Recipe} */
 export const recipe = {
   id: 'chatwork-create-group',
-  category: 'first-setup',
+  category: 'btob-tool',
   targetHost: '*.chatwork.com',
   applicableUrlPatterns: [
     'https://www.chatwork.com/*',
@@ -14,8 +14,8 @@ export const recipe = {
     ja: 'Chatwork でグループチャットを作る',
   },
   description: {
-    en: 'Guides a non-IT user to create a new group chat room in Chatwork, name it, write a description, and add the right team members.',
-    ja: 'IT に不慣れなユーザーが Chatwork で新しいグループチャットを作成し、ルーム名・説明を入力してメンバーを招待するまでを案内します。',
+    en: 'Guides a non-IT user to create a new group chat room in Chatwork, name it, write a description, and add the right team members. Note: your contact and member list depends on your own Chatwork workspace, so the screen may differ from this recipe — record your own version if it does not match.',
+    ja: 'IT に不慣れなユーザーが Chatwork で新しいグループチャットを作成し、ルーム名・説明を入力してメンバーを招待するまでを案内します。注意: 連絡先やメンバー一覧はご利用の Chatwork ワークスペースに依存するため、画面はこのレシピと異なる場合があります。合わない場合は録画機能で自社専用版を作成してください。',
   },
   estimatedSteps: 7,
   estimatedSeconds: 300,

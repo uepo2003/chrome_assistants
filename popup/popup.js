@@ -11,7 +11,10 @@
   };
 
   const STORAGE_KEYS = {
-    API_KEY: 'at_api_key',
+    API_KEY: 'at_api_key',                 // Anthropic / legacy
+    API_KEY_GEMINI: 'at_api_key_gemini',   // primary (Gemini-first)
+    API_KEY_DEEPSEEK: 'at_api_key_deepseek',
+    API_KEY_OPENAI: 'at_api_key_openai',
     MODE: 'at_mode',
     SPEED: 'at_speed',
   };
@@ -130,12 +133,21 @@
     });
   }
 
-  function openOptions() {
+  function openOptions(anchor) {
     try {
+      if (anchor) {
+        // Deep-link so the options page scrolls/focuses a specific field
+        // (openOptionsPage can't carry a hash). Gemini-first: the warning
+        // CTA points users straight at the Gemini key input.
+        const url = chrome.runtime.getURL(
+          'options/options.html#' + String(anchor)
+        );
+        chrome.tabs.create({ url });
+        return;
+      }
       if (chrome.runtime.openOptionsPage) {
         chrome.runtime.openOptionsPage();
       } else {
-        // Fallback
         const url = chrome.runtime.getURL('options/options.html');
         chrome.tabs.create({ url });
       }
@@ -247,7 +259,7 @@
     els.primaryBtn.addEventListener('click', onPrimaryClick);
     els.openSettingsBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      openOptions();
+      openOptions('api-key-gemini');
     });
     els.footerSettings.addEventListener('click', (e) => {
       e.preventDefault();
@@ -389,10 +401,19 @@
     // 2) Storage
     const items = await storageGet([
       STORAGE_KEYS.API_KEY,
+      STORAGE_KEYS.API_KEY_GEMINI,
+      STORAGE_KEYS.API_KEY_DEEPSEEK,
+      STORAGE_KEYS.API_KEY_OPENAI,
       STORAGE_KEYS.MODE,
       STORAGE_KEYS.SPEED,
     ]);
-    state.apiKey = items[STORAGE_KEYS.API_KEY] || '';
+    // Gemini-first: any registered provider key clears the warning.
+    state.apiKey =
+      items[STORAGE_KEYS.API_KEY_GEMINI] ||
+      items[STORAGE_KEYS.API_KEY] ||
+      items[STORAGE_KEYS.API_KEY_DEEPSEEK] ||
+      items[STORAGE_KEYS.API_KEY_OPENAI] ||
+      '';
     state.mode = items[STORAGE_KEYS.MODE] || 'hybrid';
     state.speed = items[STORAGE_KEYS.SPEED] || 'normal';
 

@@ -75,6 +75,30 @@ change. Every entry below records what was checked at recipe-authoring time.
   declared (lovable-account + github-connected).
 - **Date:** 2026-05-14 — schema-verified. DOM-verified: TBD.
 
+## `pivot-to-btob-and-gemini-first` — category re-classification (task 5.8)
+
+On the BtoB pivot, the following six recipes were moved from
+`category: 'first-setup'` to the new `category: 'btob-tool'` (added to
+`VALID_CATEGORIES` in `recipes/_types.js`). Each also gained a bilingual
+"your screen may differ — record your own version" note in `description`
+(spec: `btob-recipe-pack`). All six still pass `recipes/_loader.js`
+schema validation.
+
+| Recipe | targetHost | New category |
+| --- | --- | --- |
+| `kintone-app-navigation` | `*.cybozu.com` | `btob-tool` |
+| `kintone-create-app-record` | `*.cybozu.com` | `btob-tool` |
+| `chatwork-add-task` | `*.chatwork.com` | `btob-tool` |
+| `chatwork-create-group` | `*.chatwork.com` | `btob-tool` |
+| `slack-create-channel` | `*.slack.com` | `btob-tool` |
+| `lstep-scenario-walkthrough` | `manager.linestep.net` | `btob-tool` |
+
+- **What was checked:** schema-only — category enum now accepts
+  `btob-tool`, bilingual title/description (incl. the new screen-customization
+  note), `_loader.js` validator + `scripts/i18n-check.js` pass.
+- **Date:** 2026-05-17 — schema-verified. DOM / end-to-end (task 5.9 & 12.1):
+  TBD by humans before v1 release; bump `lastVerifiedAt` after the live walk.
+
 ## Follow-up before v1 release
 
 For each entry above, a human needs to:

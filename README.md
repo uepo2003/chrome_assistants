@@ -23,7 +23,13 @@ Quickstart Copilot is a Chrome extension that guides you through specific in-bro
 
 ## v1 recipes
 
-### BtoB SaaS guides (new)
+### BtoB SaaS guides (`btob-tool` — pinned to the top of the catalog)
+
+These six are the headline recipes: shown first in the catalog and boosted in
+search. BtoB screens are customized per organization, so each recipe says so in
+its description — when the standard recipe doesn't match your screen, use
+**Record your own recipe** (catalog footer) to capture a company-specific
+version locally and export it as `recipes/_user/<id>.js`.
 
 | Recipe | Service | Difficulty |
 | --- | --- | --- |
@@ -59,13 +65,14 @@ The bet: a beginner who can describe an app in English doesn't want a general br
 2. Open `chrome://extensions`, enable Developer Mode, click **Load unpacked**, point to this folder.
 3. Pin the toolbar icon. Click it → **Open Sidepanel**.
 
-The extension is unsigned; reloading is just the refresh icon on the card in `chrome://extensions`. The Chrome Web Store build will follow once v0.3.0 stabilises.
+The extension is unsigned; reloading is just the refresh icon on the card in `chrome://extensions`. The Chrome Web Store build will follow once v0.4.0 stabilises.
 
 ## Configuration
 
 Open the options page from the popup or right-click the toolbar icon → **Options**.
 
-- **Anthropic API key** — needed for AI-driven steps. Stored only in your browser (`chrome.storage.local`).
+- **Gemini API key (recommended, default)** — Quickstart Copilot defaults to Google Gemini (`gemini-2.5-flash-lite`). Get a free key from [Google AI Studio](https://aistudio.google.com/app/apikey) — the free tier is enough to start at $0. Stored only in your browser (`chrome.storage.local`).
+- **Fallback providers (optional)** — Anthropic Claude, DeepSeek, or OpenAI keys can be added under **API Keys**; the fallback provider is used automatically on retryable errors.
 - **Mode** — `Rules only` / `Hybrid` (recommended) / `AI only`.
 - **Language** — English / 日本語. The catalog, errors, and wizard all flip immediately.
 - **Speed** — Slow / Normal / Fast. Tunes cursor animation and step pacing.
@@ -95,20 +102,21 @@ A Python alternative (`scripts/generate-icons.py`, requires Pillow) produces a s
 ## Privacy
 
 - All settings live in `chrome.storage.local`. Nothing is synced.
-- We send a compact summary of the current page (URL, title, visible button/input labels) to Anthropic during AI-driven steps. We do **not** send: screenshots, your clipboard, form values, or page content.
-- Your API key is stored locally and only sent to `api.anthropic.com`.
+- We send a compact summary of the current page (URL, title, visible button/input labels — interactive elements only, never the full DOM or screenshots) to the active AI provider during AI-driven steps. We do **not** send: screenshots, your clipboard, form values, or page content.
+- Your API key is stored locally and only sent to the active provider's endpoint — by default `generativelanguage.googleapis.com` (Gemini); `api.anthropic.com`, `api.deepseek.com`, or `api.openai.com` if you switch providers.
+- Recipe Recorder drafts (`at_user_recipes`) stay in `chrome.storage.local`. They are never synced or sent over the network — only an explicit "Export JSON" leaves the browser.
 
 ## Known limitations
 
 - **Main frame only.** Content scripts run with `all_frames: false`; tutorials hosted in cross-origin iframes are not driven.
 - **No shadow DOM piercing.** Elements inside closed shadow roots are invisible to the DOM analyzer.
-- **Costs API tokens.** Every AI fallback consumes input/output tokens on your Anthropic account. Use `Rules only` mode for a zero-cost run.
+- **Costs API tokens.** Every AI step consumes input/output tokens on the active provider. Gemini's AI Studio free tier covers light use; selector-cache hits and DOM compression keep token spend low. Use `Rules only` mode (or Guide mode without a key) for a zero-cost run.
 - **Chromium only.** Built against MV3; not tested on Firefox.
 - **Recipes are narrow on purpose.** If a service isn't in the v1 set above, fall back to Open-ended mode in the catalog footer.
 
 ## Version
 
-0.3.0 — see `CHANGELOG.md`.
+0.4.0 — see `CHANGELOG.md`.
 
 ## License
 

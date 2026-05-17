@@ -80,6 +80,9 @@ export function buildUserMessage(snapshot) {
   ].join('\n');
 
   // Build the table line-by-line, stopping if we'd exceed the budget.
+  // FIXED BY SPEC (dom-compression: "LLM 投入文字数の上限とトランケーション
+  // 通知"). quick-skip char budget = 3000. Do NOT raise this without
+  // updating openspec specs/dom-compression — it's the cost guardrail.
   const BUDGET = 3000;
   const { lines } = renderInteractives(interactives, BUDGET - (header.length + 1));
   return `${header}\n${lines.join('\n')}`;
@@ -346,6 +349,9 @@ export function buildStepUserMessage(snapshot, step, stepIndex, totalSteps, chat
   const chatTail = renderChatTail(chatHistory);
   const lastActionBlock = renderLastAction(lastAction);
 
+  // FIXED BY SPEC (dom-compression). step-flow char budget = 4000. The
+  // truncation hint "... (N more truncated)" below is mandated so the LLM
+  // knows more elements exist. Do NOT raise without updating the spec.
   const BUDGET = 4000;
   const used = stepHeader.length + pageHeader.length + chatTail.length + lastActionBlock.length + 4;
   const { lines } = renderInteractives(interactives, Math.max(200, BUDGET - used));
