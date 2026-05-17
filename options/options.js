@@ -40,7 +40,7 @@ const PROVIDER_TEST = {
   openai:   testOpenAICompat.bind(null, 'https://api.openai.com/v1/chat/completions', 'gpt-4o-mini'),
 };
 
-const TEST_TIMEOUT_MS = 30000;
+const TEST_TIMEOUT_MS = 12000;
 const MSG_DEV_LOG_QUERY = 'AT_DEV_LOG_QUERY';
 const MSG_DEV_LOG_CLEAR = 'AT_DEV_LOG_CLEAR';
 const MSG_DEV_LOG_PUSH = 'AT_DEV_LOG_PUSH';
@@ -76,6 +76,7 @@ const saveToast    = $('save-toast');
 const autoStartCheckbox = $('auto-start');
 
 const cancelTestBtn = $('cancel-test');
+const testInflight  = $('test-inflight');
 const testElapsed   = $('test-elapsed');
 const langSelect    = $('lang-select');
 
@@ -391,10 +392,17 @@ async function saveNonKeyOnly() {
 // Test connection — per provider
 // ---------------------------------------------------------------------------
 
+let testUiInFlight = false;
+
 function startTestUiInFlight() {
+  testUiInFlight = true;
   testKeyBtn.disabled = true;
   testSpinner.hidden = false;
   cancelTestBtn.hidden = false;
+  if (testInflight) {
+    testInflight.hidden = false;
+    testInflight.textContent = tt('options.apiKey.testing');
+  }
   testElapsed.hidden = false;
   testElapsed.textContent = '0s';
   testElapsed.classList.remove('test-elapsed--slow');
@@ -404,17 +412,25 @@ function startTestUiInFlight() {
     const elapsed = Date.now() - testStartedAt;
     const sec = Math.floor(elapsed / 1000);
     testElapsed.textContent = sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
-    if (elapsed > 10000) testElapsed.classList.add('test-elapsed--slow');
+    if (elapsed > 8000) testElapsed.classList.add('test-elapsed--slow');
   }, 250);
 }
 
+// Idempotent: safe to call multiple times; only the first call after a
+// startTestUiInFlight() actually restores the UI.
 function endTestUiInFlight() {
+  if (!testUiInFlight) return;
+  testUiInFlight = false;
   if (testElapsedTimer) {
     clearInterval(testElapsedTimer);
     testElapsedTimer = null;
   }
   testSpinner.hidden = true;
   cancelTestBtn.hidden = true;
+  if (testInflight) {
+    testInflight.hidden = true;
+    testInflight.textContent = '';
+  }
   testElapsed.hidden = true;
   testElapsed.classList.remove('test-elapsed--slow');
   updateTestButtonEnabled();
@@ -427,6 +443,22 @@ function getActiveKeyFromUi() {
   if (provider === 'deepseek') return (apiKeyDeepSeek && apiKeyDeepSeek.value.trim()) || (apiKeyInput && apiKeyInput.value.trim()) || '';
   if (provider === 'openai')   return (apiKeyOpenAI   && apiKeyOpenAI.value.trim())   || (apiKeyInput && apiKeyInput.value.trim()) || '';
   return (apiKeyInput && apiKeyInput.value.trim()) || '';
+}
+
+// Sentinel objects so the race winner is unambiguous regardless of what the
+// provider test function returns/throws.
+const TEST_TIMED_OUT = Symbol('test_timeout');
+
+function makeTimeout(localAbort) {
+  // Resolves (never rejects) after TEST_TIMEOUT_MS. We do NOT rely on the
+  // fetch promise ever settling — once this wins the race we move on, abort
+  // the controller best-effort, and restore the UI ourselves.
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      try { localAbort.abort('timeout'); } catch {}
+      resolve(TEST_TIMED_OUT);
+    }, TEST_TIMEOUT_MS);
+  });
 }
 
 async function testConnection() {
@@ -445,28 +477,29 @@ async function testConnection() {
   const localAbort = new AbortController();
   testAbort = localAbort;
 
-  const softTimer = setTimeout(() => {
-    try { localAbort.abort('timeout'); } catch {}
-  }, TEST_TIMEOUT_MS);
-
-  let hardCleared = false;
-  const hardTimer = setTimeout(() => {
-    hardCleared = true;
-    try { localAbort.abort('hard_timeout'); } catch {}
-    endTestUiInFlight();
-    if (testAbort === localAbort) testAbort = null;
-    showTestResult(false, tt('options.apiKey.testTimeout', { seconds: TEST_TIMEOUT_MS / 1000 }));
-  }, TEST_TIMEOUT_MS + 5000);
-
   startTestUiInFlight();
 
   const testFn = PROVIDER_TEST[provider] || testAnthropic;
   try {
-    await testFn(apiKey, model, localAbort, hardCleared);
+    // The test function renders its own ✓/✕ result via showTestResult().
+    // Whichever settles first wins; if the timeout wins we render the timeout
+    // line here. UI restoration happens unconditionally in finally and never
+    // waits on the fetch promise.
+    const outcome = await Promise.race([
+      testFn(apiKey, model, localAbort).then(() => 'done'),
+      makeTimeout(localAbort),
+    ]);
+    if (outcome === TEST_TIMED_OUT) {
+      showTestResult(false, tt('options.apiKey.testTimeout', { seconds: TEST_TIMEOUT_MS / 1000 }));
+    }
+  } catch (_e) {
+    // Test functions handle their own errors; this is a last-resort guard so a
+    // result line is always rendered and the spinner never stays up.
+    if (testResult && !testResult.textContent) {
+      showTestResult(false, tt('options.apiKey.networkError', { message: 'unknown' }));
+    }
   } finally {
-    clearTimeout(softTimer);
-    clearTimeout(hardTimer);
-    if (!hardCleared) endTestUiInFlight();
+    endTestUiInFlight();
     if (testAbort === localAbort) testAbort = null;
   }
 }
@@ -539,11 +572,12 @@ async function testOpenAICompat(endpoint, defaultModel, apiKey, model, localAbor
 function _handleTestFetchError(err, localAbort) {
   if (err && err.name === 'AbortError') {
     const reason = localAbort.signal && localAbort.signal.reason;
-    if (reason === 'timeout' || reason === 'hard_timeout') {
+    if (reason === 'timeout') {
       showTestResult(false, tt('options.apiKey.testTimeout', { seconds: TEST_TIMEOUT_MS / 1000 }));
     } else if (reason === 'superseded') {
-      // swallow
+      // swallow — a newer test replaced this one
     } else {
+      // user_cancel or any other abort → cancelled
       showTestResult(false, tt('options.apiKey.testCancelled'));
     }
   } else {
@@ -571,7 +605,12 @@ async function _handleTestResponse(response) {
 function cancelTest() {
   if (testAbort) {
     try { testAbort.abort('user_cancel'); } catch {}
+    testAbort = null;
   }
+  // Don't wait on the fetch promise (some Chrome builds never reject on
+  // abort): render the cancelled result and restore the UI immediately.
+  showTestResult(false, tt('options.apiKey.testCancelled'));
+  endTestUiInFlight();
 }
 
 function toggleKeyVisibility() {
@@ -579,12 +618,12 @@ function toggleKeyVisibility() {
   if (showing) {
     apiKeyInput.type = 'password';
     toggleKeyBtn.setAttribute('aria-pressed', 'false');
-    toggleKeyBtn.setAttribute('aria-label', 'Show API key');
+    toggleKeyBtn.setAttribute('aria-label', tt('options.apiKeys.showKey'));
     toggleKeyIcon.innerHTML = '&#128065;';
   } else {
     apiKeyInput.type = 'text';
     toggleKeyBtn.setAttribute('aria-pressed', 'true');
-    toggleKeyBtn.setAttribute('aria-label', 'Hide API key');
+    toggleKeyBtn.setAttribute('aria-label', tt('options.apiKeys.hideKey'));
     toggleKeyIcon.textContent = '✕';
   }
 }
@@ -839,7 +878,7 @@ async function bootstrap() {
   try {
     await loadSettings();
   } catch (err) {
-    showTestResult(false, 'Could not read saved settings');
+    showTestResult(false, tt('options.error.readSettings'));
   }
   refreshDevLog();
 }

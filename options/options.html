@@ -33,81 +33,81 @@
 
     <!-- Section 1: AI Provider -->
     <section class="qc-card section" aria-labelledby="sec-provider">
-      <h2 id="sec-provider" class="section__title">AI Provider</h2>
-      <p class="section__desc">Choose which AI service to use. Gemini is the default (low cost). A fallback provider is used automatically on errors.</p>
+      <h2 id="sec-provider" class="section__title" data-i18n="options.sec.provider">AI Provider</h2>
+      <p class="section__desc" data-i18n="options.provider.desc">Choose which AI service to use. Gemini is the default (low cost). A fallback provider is used automatically on errors.</p>
 
       <div class="qc-field">
-        <label class="qc-field__label" for="provider-select">Primary provider</label>
+        <label class="qc-field__label" for="provider-select" data-i18n="options.provider.primaryLabel">Primary provider</label>
         <select id="provider-select" class="qc-select">
-          <option value="gemini">Gemini (Google) — default, low cost</option>
-          <option value="deepseek">DeepSeek — growth tier</option>
-          <option value="anthropic">Anthropic Claude — reliable fallback</option>
-          <option value="openai">OpenAI — compatible fallback</option>
+          <option value="gemini" data-i18n="options.provider.opt.gemini">Gemini (Google) — default, low cost</option>
+          <option value="deepseek" data-i18n="options.provider.opt.deepseek">DeepSeek — growth tier</option>
+          <option value="anthropic" data-i18n="options.provider.opt.anthropic">Anthropic Claude — reliable fallback</option>
+          <option value="openai" data-i18n="options.provider.opt.openai">OpenAI — compatible fallback</option>
         </select>
       </div>
 
       <div class="qc-field">
-        <label class="qc-field__label" for="fallback-provider-select">Fallback provider (auto-retry on error)</label>
+        <label class="qc-field__label" for="fallback-provider-select" data-i18n="options.provider.fallbackLabel">Fallback provider (auto-retry on error)</label>
         <select id="fallback-provider-select" class="qc-select">
-          <option value="anthropic">Anthropic Claude</option>
-          <option value="gemini">Gemini (Google)</option>
-          <option value="deepseek">DeepSeek</option>
-          <option value="openai">OpenAI</option>
-          <option value="none">None (no fallback)</option>
+          <option value="anthropic" data-i18n="options.provider.fb.anthropic">Anthropic Claude</option>
+          <option value="gemini" data-i18n="options.provider.fb.gemini">Gemini (Google)</option>
+          <option value="deepseek" data-i18n="options.provider.fb.deepseek">DeepSeek</option>
+          <option value="openai" data-i18n="options.provider.fb.openai">OpenAI</option>
+          <option value="none" data-i18n="options.provider.fb.none">None (no fallback)</option>
         </select>
       </div>
 
       <div class="qc-field">
-        <label class="qc-field__label" for="model-select">Model</label>
+        <label class="qc-field__label" for="model-select" data-i18n="options.behavior.model">Model</label>
         <select id="model-select" class="qc-select">
           <!-- Options populated by JS based on selected provider -->
         </select>
-        <p class="qc-field__hint" id="model-hint">Model used for the selected provider.</p>
+        <p class="qc-field__hint" id="model-hint" data-i18n="options.provider.modelHint">Model used for the selected provider.</p>
       </div>
     </section>
 
     <!-- Section 1b: API keys -->
     <section class="qc-card section" aria-labelledby="sec-key">
-      <h2 id="sec-key" class="section__title">API Keys</h2>
-      <p class="section__desc">Enter an API key for each provider you want to use. Keys are stored only in your browser.</p>
+      <h2 id="sec-key" class="section__title" data-i18n="options.sec.apiKeys">API Keys</h2>
+      <p class="section__desc" data-i18n="options.apiKeys.desc">Enter an API key for each provider you want to use. Keys are stored only in your browser.</p>
 
       <!-- Gemini key -->
       <div class="qc-field provider-key-field" id="key-field-gemini">
-        <label class="qc-field__label" for="api-key-gemini">Gemini API key</label>
+        <label class="qc-field__label" for="api-key-gemini" data-i18n="options.apiKeys.gemini.label">Gemini API key</label>
         <div class="key-row">
           <input id="api-key-gemini" class="qc-input key-row__input" type="password"
             autocomplete="off" spellcheck="false" placeholder="AIza..." />
           <button type="button" class="icon-btn toggle-key-btn" data-target="api-key-gemini"
-            aria-label="Show or hide Gemini API key" aria-pressed="false" title="Show / hide">
+            aria-label="Show or hide Gemini API key" data-i18n-aria-label="options.apiKeys.toggleShow" data-i18n-title="options.apiKeys.toggleShow" aria-pressed="false" title="Show / hide">
             <span class="toggle-key-icon" aria-hidden="true">&#128065;</span>
           </button>
         </div>
         <p class="qc-field__hint">
-          Stored locally. Sent only to generativelanguage.googleapis.com.
-          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Get a key →</a>
+          <span data-i18n="options.apiKeys.gemini.hint">Stored locally. Sent only to generativelanguage.googleapis.com.</span>
+          <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" data-i18n="options.apiKey.getKey">Get a key →</a>
         </p>
       </div>
 
       <!-- DeepSeek key -->
       <div class="qc-field provider-key-field" id="key-field-deepseek">
-        <label class="qc-field__label" for="api-key-deepseek">DeepSeek API key</label>
+        <label class="qc-field__label" for="api-key-deepseek" data-i18n="options.apiKeys.deepseek.label">DeepSeek API key</label>
         <div class="key-row">
           <input id="api-key-deepseek" class="qc-input key-row__input" type="password"
             autocomplete="off" spellcheck="false" placeholder="sk-..." />
           <button type="button" class="icon-btn toggle-key-btn" data-target="api-key-deepseek"
-            aria-label="Show or hide DeepSeek API key" aria-pressed="false" title="Show / hide">
+            aria-label="Show or hide DeepSeek API key" data-i18n-aria-label="options.apiKeys.toggleShow" data-i18n-title="options.apiKeys.toggleShow" aria-pressed="false" title="Show / hide">
             <span class="toggle-key-icon" aria-hidden="true">&#128065;</span>
           </button>
         </div>
         <p class="qc-field__hint">
-          Stored locally. Sent only to api.deepseek.com.
-          <a href="https://platform.deepseek.com/" target="_blank" rel="noopener noreferrer">Get a key →</a>
+          <span data-i18n="options.apiKeys.deepseek.hint">Stored locally. Sent only to api.deepseek.com.</span>
+          <a href="https://platform.deepseek.com/" target="_blank" rel="noopener noreferrer" data-i18n="options.apiKey.getKey">Get a key →</a>
         </p>
       </div>
 
       <!-- Anthropic key -->
       <div class="qc-field provider-key-field" id="key-field-anthropic">
-        <label class="qc-field__label" for="api-key">Anthropic API key</label>
+        <label class="qc-field__label" for="api-key" data-i18n="options.sec.apiKey">Anthropic API key</label>
         <div class="key-row">
           <input
             id="api-key"
@@ -140,18 +140,18 @@
 
       <!-- OpenAI key -->
       <div class="qc-field provider-key-field" id="key-field-openai">
-        <label class="qc-field__label" for="api-key-openai">OpenAI API key</label>
+        <label class="qc-field__label" for="api-key-openai" data-i18n="options.apiKeys.openai.label">OpenAI API key</label>
         <div class="key-row">
           <input id="api-key-openai" class="qc-input key-row__input" type="password"
             autocomplete="off" spellcheck="false" placeholder="sk-..." />
           <button type="button" class="icon-btn toggle-key-btn" data-target="api-key-openai"
-            aria-label="Show or hide OpenAI API key" aria-pressed="false" title="Show / hide">
+            aria-label="Show or hide OpenAI API key" data-i18n-aria-label="options.apiKeys.toggleShow" data-i18n-title="options.apiKeys.toggleShow" aria-pressed="false" title="Show / hide">
             <span class="toggle-key-icon" aria-hidden="true">&#128065;</span>
           </button>
         </div>
         <p class="qc-field__hint">
-          Stored locally. Sent only to api.openai.com.
-          <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">Get a key →</a>
+          <span data-i18n="options.apiKeys.openai.hint">Stored locally. Sent only to api.openai.com.</span>
+          <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" data-i18n="options.apiKey.getKey">Get a key →</a>
         </p>
       </div>
 
@@ -162,6 +162,7 @@
           <span id="test-spinner" class="spinner" hidden aria-hidden="true"></span>
         </button>
         <button id="cancel-test" type="button" class="qc-btn qc-btn--ghost" hidden data-i18n="common.cancel">Cancel</button>
+        <span id="test-inflight" class="test-inflight" role="status" aria-live="polite" hidden data-i18n="options.apiKey.testing">Testing connection…</span>
         <span id="test-elapsed" class="test-elapsed" role="status" aria-live="polite" hidden></span>
         <span id="test-result" class="test-result" role="status" aria-live="polite"></span>
         <span id="save-toast" class="toast" role="status" aria-live="polite" hidden data-i18n="options.apiKey.savedToast">Saved ✓</span>

@@ -39,6 +39,7 @@
             id="langPill"
             class="lang-pill"
             aria-label="Toggle language"
+            data-i18n-aria-label="sidepanel.langToggleAria"
             title="EN / 日本語"
           >EN</button>
           <span
@@ -76,6 +77,7 @@
         class="upgrade-banner"
         role="region"
         aria-label="Upgrade notice"
+        data-i18n-aria-label="upgrade.banner.ariaRegion"
         hidden
       >
         <div class="upgrade-banner__body">
@@ -97,6 +99,7 @@
         class="catalog"
         id="catalog"
         aria-label="Recipe catalog"
+        data-i18n-aria-label="catalog.ariaRegion"
       >
         <div class="catalog__header">
           <h2 class="catalog__heading" data-i18n="catalog.heading">Which setup are you tackling today?</h2>
@@ -117,6 +120,7 @@
             id="catalogChips"
             role="tablist"
             aria-label="Category filter"
+            data-i18n-aria-label="catalog.chipsAria"
           ></div>
           <p
             class="catalog__count"
@@ -287,6 +291,7 @@
         id="chat"
         aria-live="polite"
         aria-label="Copilot activity log"
+        data-i18n-aria-label="sidepanel.chatAria"
       >
         <!-- === First-Run wizard (sec8-firstrun) ============================
              Shown only while data-mode="firstrun". Lives at the very top of
@@ -297,6 +302,7 @@
           id="firstRun"
           class="firstrun"
           aria-label="First-run setup wizard"
+          data-i18n-aria-label="firstRun.ariaRegion"
           hidden
         >
           <header class="firstrun__head">
@@ -308,6 +314,7 @@
               aria-valuemax="3"
               aria-valuenow="1"
               aria-label="First-run progress"
+              data-i18n-aria-label="firstRun.progressAria"
             >
               <span class="firstrun__dot" data-step="0"></span>
               <span class="firstrun__dot" data-step="1"></span>
@@ -328,6 +335,7 @@
               class="firstrun__choices"
               role="radiogroup"
               aria-label="Language"
+              data-i18n-aria-label="firstRun.langChoicesAria"
               id="firstRunLangChoices"
             >
               <button
@@ -453,12 +461,14 @@
             placeholder="Tell me what you want to do on this site… e.g., 'Create a new private GitHub repo called demo'"
             data-i18n-placeholder="sidepanel.composer.placeholder"
             aria-label="Describe the goal you want the copilot to achieve"
+            data-i18n-aria-label="sidepanel.composer.inputAria"
           ></textarea>
           <button
             type="button"
             id="sendBtn"
             class="btn btn--primary composer__send"
             aria-label="Submit goal"
+            data-i18n-aria-label="sidepanel.composer.sendAria"
             data-i18n="common.send"
           >
             Send
@@ -489,6 +499,7 @@
             class="qc-btn qc-btn--ghost qc-btn--sm"
             data-qc-close
             data-i18n="catalog.detail.close"
+            data-i18n-aria-label="catalog.detail.close"
             aria-label="Close"
           >Close</button>
         </header>
@@ -547,6 +558,7 @@
             class="qc-btn qc-btn--ghost qc-btn--sm"
             data-qc-close
             data-i18n="catalog.preview.cancel"
+            data-i18n-aria-label="catalog.preview.cancel"
             aria-label="Cancel"
           >Cancel</button>
         </header>

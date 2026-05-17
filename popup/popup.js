@@ -184,10 +184,12 @@
     }
 
     // Button label
-    els.primaryBtn.textContent = state.running ? 'Stop' : 'Start';
+    els.primaryBtn.textContent = state.running
+      ? tt('popup.stopLabel')
+      : tt('popup.startLabel');
     els.primaryBtn.setAttribute(
       'aria-label',
-      state.running ? 'Stop auto tutorial' : 'Start auto tutorial'
+      state.running ? tt('popup.stopAria') : tt('popup.startAria')
     );
 
     // Disabled logic

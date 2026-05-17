@@ -337,6 +337,10 @@ fieldset.group > legend {
   color: var(--at-warning);
   border-color: color-mix(in srgb, var(--at-warning) 30%, transparent);
 }
+.test-inflight {
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+}
 
 /* ---------- Developer log --------------------------------------- */
 .dev-log-controls {

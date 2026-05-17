@@ -210,7 +210,7 @@
     state.runState = s;
     dom.app.dataset.state = s;
     dom.statusDot.dataset.state = s;
-    dom.statusDot.setAttribute("aria-label", `Status: ${s}`);
+    dom.statusDot.setAttribute("aria-label", tr("sidepanel.statusAria", { state: s }));
     dom.statusDot.title = s;
 
     const showStop = s === "running" || s === "waiting-user" || s === "paused";
@@ -459,7 +459,7 @@
     }, [
       el("div", { className: "step__index", text: String(i + 1) }),
       el("div", { className: "step__body" }, [
-        el("p", { className: "step__title", text: (step && step.title) || `Step ${i + 1}` }),
+        el("p", { className: "step__title", text: (step && step.title) || tr("sidepanel.stepFallback", { n: i + 1 }) }),
         el("p", {
           className: "step__desc",
           text: (step && step.description) || "",
@@ -511,13 +511,13 @@
       className: "ask__input",
       attrs: {
         type: "text",
-        "aria-label": "Your reply",
-        placeholder: "Type your answer…",
+        "aria-label": tr("ask.replyAria"),
+        placeholder: tr("ask.replyPlaceholder"),
       },
     });
     const sendBtn = el("button", {
       className: "btn btn--primary btn--sm",
-      text: "Send",
+      text: tr("common.send"),
       attrs: { type: "button" },
     });
 
@@ -542,8 +542,8 @@
       children.push(
         el("button", {
           className: "ask__suggestion",
-          text: `Suggested: ${suggestion}`,
-          attrs: { type: "button", "aria-label": `Fill with suggestion: ${suggestion}` },
+          text: tr("ask.suggested", { suggestion }),
+          attrs: { type: "button", "aria-label": tr("ask.fillSuggestion", { suggestion }) },
           on: {
             click: () => {
               input.value = suggestion;
@@ -565,7 +565,7 @@
     send(MSG.USER_REPLY, { askId, reply });
     card.classList.add("ask--answered");
     card.innerHTML = "";
-    card.appendChild(el("div", { text: `Q: ${question} → A: ${reply}` }));
+    card.appendChild(el("div", { text: tr("ask.answered", { question, reply }) }));
     setRunState("running");
   }
 
@@ -576,12 +576,12 @@
 
     const approveBtn = el("button", {
       className: "btn btn--primary btn--sm",
-      text: "Approve",
+      text: tr("common.approve"),
       attrs: { type: "button" },
     });
     const skipBtn = el("button", {
       className: "btn btn--ghost btn--sm",
-      text: "Skip step",
+      text: tr("common.skipStep"),
       attrs: { type: "button" },
     });
 
@@ -589,7 +589,7 @@
     skipBtn.addEventListener("click", () => respondConfirm(askId, false, card));
 
     const card = el("div", { className: "card confirm" }, [
-      el("p", { className: "confirm__title", text: what || "Confirm action" }),
+      el("p", { className: "confirm__title", text: what || tr("confirm.title") }),
       el("p", { className: "confirm__body", text: reason || "" }),
       el("div", { className: "confirm__row" }, [
         approveBtn,
@@ -609,7 +609,9 @@
     send(MSG.CONFIRM_RESPONSE, { askId, approve });
     card.classList.add("ask--answered");
     card.innerHTML = "";
-    card.appendChild(el("div", { text: approve ? "✓ Approved" : "↷ Skipped" }));
+    card.appendChild(el("div", {
+      text: approve ? tr("confirm.approved") : tr("confirm.skipped"),
+    }));
     setRunState("running");
   }
 
@@ -642,7 +644,7 @@
 
     const allChip = el("button", {
       className: "catalog__chip",
-      text: "All",
+      text: tr("catalog.category.all"),
       attrs: {
         type: "button",
         role: "tab",
@@ -1055,8 +1057,8 @@
     const timeSpan = el("span", { className: "thinking__time", text: "0s" });
     const cancelBtn = el("button", {
       className: "thinking__cancel",
-      attrs: { type: "button", "aria-label": "Cancel" },
-      text: "Cancel",
+      attrs: { type: "button", "aria-label": tr("common.cancel") },
+      text: tr("common.cancel"),
       on: { click: () => onCancelThinking(kind) },
     });
 
@@ -1336,8 +1338,18 @@
       case MSG.STEP_DONE: {
         const idx = typeof msg.stepIndex === "number" ? msg.stepIndex : state.currentStepIndex;
         updatePlanStep(idx, "done");
-        const tag = msg.success === false ? "✗" : "✓";
-        appendSystem(`${tag} Step ${idx + 1}${msg.summary ? `: ${msg.summary}` : ""}`);
+        const stepN = idx + 1;
+        let stepMsg;
+        if (msg.success === false) {
+          stepMsg = msg.summary
+            ? tr("system.stepFail", { n: stepN, summary: msg.summary })
+            : tr("system.stepFailNoSummary", { n: stepN });
+        } else {
+          stepMsg = msg.summary
+            ? tr("system.stepOk", { n: stepN, summary: msg.summary })
+            : tr("system.stepNoSummary", { n: stepN });
+        }
+        appendSystem(stepMsg);
         if (msg.summary && dom.liveSummary) {
           dom.liveSummary.textContent = tr("live.lastSummary", { text: msg.summary });
           state.lastSummaryByStep.set(idx, msg.summary);
@@ -1413,17 +1425,17 @@
       const prevTab = state.tabId;
       state.tabId = tab.id;
       state.host = state.visibleHost;
-      dom.host.textContent = state.host || "new tab";
+      dom.host.textContent = state.host || tr("sidepanel.newTab");
       if (prevTab != null && prevTab !== tab.id) {
         clearChat();
-        appendSystem(tr("system.switchedTo", { host: state.host || "new tab" }));
+        appendSystem(tr("system.switchedTo", { host: state.host || tr("sidepanel.newTab") }));
         setRunState("idle");
       }
       hideOffTabBanner();
       return;
     }
 
-    dom.host.textContent = state.host || "tab";
+    dom.host.textContent = state.host || tr("sidepanel.tab");
     if (state.visibleTabId !== state.tabId) {
       showOffTabBanner();
     } else {
