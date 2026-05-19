@@ -307,13 +307,29 @@ async function _fetchProvider(provider, model, apiKey, system, user, maxTokens, 
   if (provider === 'anthropic') {
     rawText = data?.content?.[0]?.text;
   } else if (provider === 'gemini') {
-    rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    // A candidate can hold multiple parts; concatenate every text part so a
+    // split JSON answer isn't truncated. An empty parts array usually means
+    // the model hit MAX_TOKENS on thinking — surface that so it's debuggable.
+    const cand = data?.candidates?.[0];
+    const parts = cand?.content?.parts;
+    if (Array.isArray(parts)) {
+      rawText = parts.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join('');
+    }
+    if (!rawText) {
+      const finish = cand?.finishReason || data?.promptFeedback?.blockReason;
+      return {
+        ok: false,
+        error: 'parse_error',
+        details: finish ? `gemini returned no text (finishReason: ${finish})` : 'gemini returned no text',
+        raw: JSON.stringify(data),
+      };
+    }
   } else {
     // openai / deepseek share the same shape
     rawText = data?.choices?.[0]?.message?.content;
   }
 
-  if (typeof rawText !== 'string') {
+  if (typeof rawText !== 'string' || rawText.length === 0) {
     return { ok: false, error: 'parse_error', raw: JSON.stringify(data) };
   }
 
@@ -336,6 +352,12 @@ function _buildFetch(provider, model, apiKey, system, user, maxTokens, fetchSign
           responseMimeType: 'application/json',
           maxOutputTokens: maxTokens,
           temperature: 0,
+          // Gemini 2.5 models (incl. the default flash-lite) "think" by
+          // default, consuming the output-token budget before producing any
+          // text. With our small maxOutputTokens this returns an empty
+          // candidate and the call fails as parse_error. Disable thinking so
+          // the whole budget goes to the JSON answer. Harmless on 2.0 models.
+          thinkingConfig: { thinkingBudget: 0 },
         },
       }),
       signal: fetchSignal,

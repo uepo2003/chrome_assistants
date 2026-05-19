@@ -2245,12 +2245,31 @@
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "ping" }] }],
-          generationConfig: { maxOutputTokens: 8, temperature: 0 },
+          contents: [{ role: "user", parts: [{ text: "Reply with the single word: ok" }] }],
+          // Mirror the real call (ai-client.js): 2.5 models think by default
+          // and burn the token budget before answering. Disable thinking and
+          // give a small budget so this test reflects real usability.
+          generationConfig: {
+            maxOutputTokens: 16,
+            temperature: 0,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
         }),
         signal: abort.signal,
       });
+      let geminiText = "";
       if (response.ok) {
+        try {
+          const data = await response.clone().json();
+          const parts =
+            data && data.candidates && data.candidates[0] &&
+            data.candidates[0].content && data.candidates[0].content.parts;
+          geminiText = Array.isArray(parts)
+            ? parts.map((p) => (p && typeof p.text === "string" ? p.text : "")).join("")
+            : "";
+        } catch (_e) { /* best effort — fall through */ }
+      }
+      if (response.ok && geminiText) {
         // Persist the key on successful test so a later "Next" can't overwrite
         // with empty if the user clears the field after testing. Pin provider.
         await firstRunSetStorage({
@@ -2264,8 +2283,9 @@
         }
       } else {
         if (fr.testResult) {
+          const detail = response.ok && !geminiText ? " — no text returned" : "";
           fr.testResult.textContent =
-            "✕ " + tr("options.apiKey.failedStatus", { status: response.status });
+            "✕ " + tr("options.apiKey.failedStatus", { status: response.status }) + detail;
           fr.testResult.setAttribute("data-state", "fail");
         }
       }

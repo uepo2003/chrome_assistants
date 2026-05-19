@@ -536,15 +536,21 @@ async function testGemini(apiKey, model, localAbort) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
-        generationConfig: { maxOutputTokens: 8, temperature: 0 },
+        contents: [{ role: 'user', parts: [{ text: 'Reply with the single word: ok' }] }],
+        // Mirror the real call: disable thinking and give enough budget for a
+        // word, so a ✓ here means generation actually works (not just HTTP 200).
+        generationConfig: {
+          maxOutputTokens: 16,
+          temperature: 0,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       }),
       signal: localAbort.signal,
     });
   } catch (err) {
     return _handleTestFetchError(err, localAbort);
   }
-  return _handleTestResponse(response);
+  return _handleTestResponse(response, { validateGemini: true });
 }
 
 async function testOpenAICompat(endpoint, defaultModel, apiKey, model, localAbort) {
@@ -585,8 +591,28 @@ function _handleTestFetchError(err, localAbort) {
   }
 }
 
-async function _handleTestResponse(response) {
+async function _handleTestResponse(response, opts) {
   if (response.ok) {
+    // For Gemini, HTTP 200 alone isn't proof: a thinking model can return an
+    // empty candidate. Confirm there's actual generated text so a ✓ here
+    // guarantees the Copilot will work, not just that the key authenticates.
+    if (opts && opts.validateGemini) {
+      try {
+        const bodyTimeout = new Promise((_, rej) => setTimeout(() => rej(new Error('body_timeout')), 3000));
+        const data = await Promise.race([response.json(), bodyTimeout]);
+        const cand = data && data.candidates && data.candidates[0];
+        const parts = cand && cand.content && cand.content.parts;
+        const text = Array.isArray(parts)
+          ? parts.map((p) => (p && typeof p.text === 'string' ? p.text : '')).join('')
+          : '';
+        if (!text) {
+          const finish = (cand && cand.finishReason) ||
+            (data && data.promptFeedback && data.promptFeedback.blockReason) || 'EMPTY';
+          showTestResult(false, tt('options.apiKey.failedStatus', { status: 200 }) + ` — no text (${finish})`);
+          return;
+        }
+      } catch (_) { /* fall through to success — best effort */ }
+    }
     showTestResult(true, tt('common.ok'));
     return;
   }
