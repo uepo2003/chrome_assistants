@@ -197,6 +197,24 @@
             data-i18n="catalog.openEnded.cta"
           >Open-ended mode (advanced)</button>
         </footer>
+
+        <section
+          class="run-history"
+          id="runHistory"
+          aria-label="Recent run history"
+          data-i18n-aria-label="history.ariaRegion"
+        >
+          <header class="run-history__head">
+            <h3 class="run-history__title" data-i18n="history.heading">Recent runs</h3>
+          </header>
+          <ol class="run-history__list" id="runHistoryList"></ol>
+          <p
+            class="run-history__empty"
+            id="runHistoryEmpty"
+            data-i18n="history.empty"
+            hidden
+          >No runs yet.</p>
+        </section>
       </section>
 
       <!-- Recipe card template (cloned per recipe) -->
@@ -238,6 +256,18 @@
           </span>
           <h2 class="live__heading" id="liveHeading">—</h2>
           <p class="live__counter" id="liveCounter" aria-live="polite"></p>
+          <div
+            class="live__progress"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+            aria-label="Run progress"
+            data-i18n-aria-label="live.progressAria"
+          >
+            <span class="live__progress-fill" id="liveProgressFill"></span>
+          </div>
+          <p class="live__progress-text" id="liveProgressText" aria-live="polite"></p>
           <p class="live__summary" id="liveSummary" aria-live="polite"></p>
         </header>
 
@@ -611,6 +641,12 @@
             class="qc-btn qc-btn--primary"
             data-i18n="catalog.preview.confirm"
           >Run</button>
+          <button
+            type="button"
+            id="recipePreviewQuickSkipBtn"
+            class="qc-btn qc-btn--secondary"
+            data-i18n="catalog.preview.quickSkip"
+          >Quick skip</button>
         </footer>
       </div>
     </div>

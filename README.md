@@ -78,19 +78,22 @@ Open the options page from the popup or right-click the toolbar icon → **Optio
 - **Speed** — Slow / Normal / Fast. Tunes cursor animation and step pacing.
 - **Auto-start on page load** — kick off automatically when a page looks like a tutorial.
 
-## Running i18n-check
+## Architecture and checks
 
-Use `node scripts/i18n-check.js` from the repo root. Fails (exit 1) if any translation key exists in only one of `en` / `ja`, or if a recipe is missing a required bilingual field.
+The architecture rules live in `docs/architecture.md`. The stack intentionally stays build-less for now: Chrome MV3, plain JS content scripts, ES-module background code, and local scripts only.
 
-> The i18n agent owns the full content of this section; this paragraph is a placeholder until that lands.
+Run `npm run check` before shipping. It runs:
+
+- `npm run i18n-check` — fails if any translation key exists in only one of `en` / `ja`, or if a recipe is missing a required bilingual field.
+- `npm run architecture-check` — fails if provider defaults, message constants, manifest script order, or MV3 run-state checkpointing drift out of sync.
 
 ### CI / pre-commit integration
 
-Run `node scripts/i18n-check.js` as part of any pre-merge gate. A simple local pre-commit hook:
+Run `npm run check` as part of any pre-merge gate. A simple local pre-commit hook:
 
 ```sh
 #!/bin/sh
-node scripts/i18n-check.js || exit 1
+npm run check || exit 1
 ```
 
 ## Regenerating icons

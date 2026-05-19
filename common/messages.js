@@ -34,8 +34,13 @@
     CONFIRM_REQUEST: 'AT_CONFIRM_REQUEST',   // content -> sidepanel: { askId, what, reason, risk }
     CONFIRM_RESPONSE: 'AT_CONFIRM_RESPONSE', // sidepanel -> content: { askId, approve }
     USER_STOP: 'AT_USER_STOP',               // sidepanel -> content: abort current run
+    AUTO_START_PROBE: 'AT_AUTO_START_PROBE', // background -> content: lightweight tutorial-presence probe
+    GET_RUN_HISTORY: 'AT_GET_RUN_HISTORY',   // sidepanel -> background: read local run history
 
     // Recipe-driven handoff (Quickstart Copilot v0.3 — Section 5):
+    GET_RECIPE_CATALOG: 'AT_GET_RECIPE_CATALOG',
+    RECIPE_HEALTH_REFRESH: 'AT_RECIPE_HEALTH_REFRESH',
+    RECIPE_HEALTH_UPDATED: 'AT_RECIPE_HEALTH_UPDATED',
     PAUSED_FOR_HUMAN: 'AT_PAUSED_FOR_HUMAN', // content -> sidepanel: { recipeId, when, why: {en, ja} }
     RESUME: 'AT_RESUME',                     // sidepanel -> content: resume after human handoff
 
@@ -67,7 +72,7 @@
     DEV_MODE: 'at_dev_mode',         // boolean — enables error capture forwarding
     LANG: 'at_lang',                 // 'en' | 'ja' — UI language
     PROVIDER:          'at_provider',          // 'gemini'|'deepseek'|'anthropic'|'openai'
-    FALLBACK_PROVIDER: 'at_fallback_provider', // same enum, used on retryable errors
+    FALLBACK_PROVIDER: 'at_fallback_provider', // same enum or 'none', used on retryable errors
     RUN_MODE:          'at_run_mode',          // 'auto' | 'guide' — run-mode toggle
   });
 

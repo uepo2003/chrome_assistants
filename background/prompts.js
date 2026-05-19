@@ -293,7 +293,7 @@ export const STEP_SYSTEM_PROMPT = [
  * @returns {string}
  */
 /**
- * Returns a suffix to append to the system prompt that tells Claude what
+ * Returns a suffix to append to the system prompt that tells the model what
  * language to respond in (for question/reason/confirm text).
  */
 export function localizationSuffix(lang) {

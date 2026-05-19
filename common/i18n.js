@@ -74,6 +74,7 @@
       'popup.settings': 'Settings',
       'popup.cannotRunHere': 'Cannot run on this page.',
       'popup.noTab': 'No active tab.',
+      'popup.quickSkipNeedsKey': 'Quick skip needs an API key unless Mode is Rules only. The sidepanel still works without one.',
 
       // ----- sidepanel -----
       'sidepanel.title': 'Quickstart Copilot',
@@ -91,10 +92,10 @@
 
       // ----- system messages in chat -----
       'system.draftingPlan': 'Drafting a plan…',
-      'system.draftingStill': 'Still drafting (Claude is thinking)…',
+      'system.draftingStill': 'Still drafting (AI is thinking)…',
       'system.draftingSlow': 'Taking longer than usual…',
-      'system.askingClaude': 'Asking Claude…',
-      'system.thinkingStill': 'Claude is thinking…',
+      'system.askingClaude': 'Asking AI…',
+      'system.thinkingStill': 'AI is thinking…',
       'system.thinkingSlow': 'Taking longer than usual — will timeout soon.',
       'system.planApproved': 'Plan approved.',
       'system.planCancelled': 'Plan cancelled.',
@@ -111,6 +112,9 @@
       'system.switchedTo': 'Switched to {host}',
       'system.planError': "Couldn't generate plan: {error}",
       'system.planErrorDetails': "Couldn't generate plan: {error} ({details})",
+      'system.guideOnlyFallback': 'No API key is set, so this recipe will run as a Guide-only checklist. Do the highlighted step yourself, then press Next.',
+      'system.quickSkipStarted': 'Quick skip started for the current tab.',
+      'system.quickSkipFailed': 'Quick skip could not start: {error}',
 
       // ----- off-tab banner -----
       'offTab.message': 'Run is continuing on {host} (another tab).',
@@ -121,7 +125,7 @@
       'options.title.brand': 'Quickstart Copilot',
       'options.title.subtitle': 'Configure how the extension auto-progresses onboarding tutorials.',
       'options.sec.apiKey': 'Anthropic API key',
-      'options.sec.apiKeyDesc': "Required to talk to Claude when the extension can't decide locally.",
+      'options.sec.apiKeyDesc': "Required to talk to the active AI provider when the extension can't decide locally.",
       'options.apiKey.placeholder': 'sk-ant-...',
       'options.apiKey.helper': 'Stored locally in your browser. Never sent anywhere except api.anthropic.com.',
       'options.apiKey.getKey': 'Get a key →',
@@ -141,7 +145,7 @@
       'options.behavior.autoStart': 'Auto-start on page load',
       'options.behavior.autoStartDesc': 'When a page looks like a tutorial, start automatically without clicking the toolbar icon.',
       'options.sec.privacy': 'Privacy',
-      'options.privacy.body': 'When auto-progression is active, this extension sends a compact text summary of the visible page (URL, title, and visible button/input labels) to Claude. It does NOT send screenshots, form values, or page content. Your API key is stored only in your browser’s local storage.',
+      'options.privacy.body': 'When auto-progression is active, this extension sends a compact text summary of the visible page (URL, title, and visible button/input labels) to the active AI provider. It does NOT send screenshots, form values, or page content. Your API key is stored only in your browser’s local storage.',
       'options.sec.dev': 'Developer',
       'options.dev.desc': 'When dev mode is on, every console.error / console.warn / uncaught exception / unhandled rejection from every context is forwarded to a single ring buffer (last 200 entries).',
       'options.dev.toggle': 'Enable dev-mode error capture',
@@ -189,9 +193,9 @@
       'options.mode.rules.desc': 'Fastest. Uses local heuristics for common Next / OK / Skip buttons.',
       'options.mode.hybrid.title': 'Hybrid',
       'options.mode.hybrid.tag': 'default',
-      'options.mode.hybrid.desc': 'Rules first, asks Claude when unsure. Recommended.',
+      'options.mode.hybrid.desc': 'Rules first, asks AI when unsure. Recommended.',
       'options.mode.ai.title': 'AI only',
-      'options.mode.ai.desc': 'Always asks Claude. Most flexible, costs more.',
+      'options.mode.ai.desc': 'Always asks AI. Most flexible, costs more.',
       'options.speed.slow.title': 'Slow',
       'options.speed.slow.desc': 'Easy to follow visually.',
       'options.speed.normal.title': 'Normal',
@@ -239,6 +243,7 @@
       'catalog.preview.handoff': "You'll handle these manually",
       'catalog.preview.tokenEstimate': 'Estimated tokens: {min}–{max}',
       'catalog.preview.confirm': 'Run',
+      'catalog.preview.quickSkip': 'Quick skip',
       'catalog.preview.cancel': 'Cancel',
 
       // ----- first-run wizard -----
@@ -264,11 +269,15 @@
       'live.heading': 'Running: {title}',
       'live.stepCount': 'Step {n} / {total}',
       'live.lastSummary': 'Just did: {text}',
+      'live.progressAria': 'Run progress',
+      'live.progressText': '{pct}% complete',
       'live.paused.title': 'Paused — your turn',
       'live.paused.resume': 'Resume',
       'live.complete.title': 'Done: {title}',
       'live.aborted.title': 'Stopped',
       'live.aborted.body': 'You stopped the run.',
+      'live.quickSkip.title': 'Running: Quick skip',
+      'live.quickSkip.done': 'Quick skip finished.',
 
       // ----- pill statuses -----
       'pill.idle': 'Idle',
@@ -367,6 +376,13 @@
       'confirm.title': 'Confirm action',
       'confirm.approved': '✓ Approved',
       'confirm.skipped': '↷ Skipped',
+      'history.ariaRegion': 'Recent run history',
+      'history.heading': 'Recent runs',
+      'history.empty': 'No runs yet.',
+      'history.unknownRecipe': 'Open-ended run',
+      'history.steps': '{count} steps',
+      'history.status.complete': 'complete',
+      'history.status.aborted': 'aborted',
     },
 
     ja: {
@@ -409,6 +425,7 @@
       'popup.settings': '設定',
       'popup.cannotRunHere': 'このページでは動作できません。',
       'popup.noTab': 'アクティブなタブがありません。',
+      'popup.quickSkipNeedsKey': 'Quick skip は、モードが「ルールのみ」以外の場合 API キーが必要です。サイドパネルはキーなしでも開けます。',
 
       // ----- sidepanel -----
       'sidepanel.title': 'Quickstart Copilot',
@@ -426,10 +443,10 @@
 
       // ----- system messages in chat -----
       'system.draftingPlan': 'プラン作成中…',
-      'system.draftingStill': '思考中（Claude が考えています）…',
+      'system.draftingStill': '思考中（AI が考えています）…',
       'system.draftingSlow': '通常より時間がかかっています…',
-      'system.askingClaude': 'Claude に問い合わせ中…',
-      'system.thinkingStill': 'Claude が考えています…',
+      'system.askingClaude': 'AI に問い合わせ中…',
+      'system.thinkingStill': 'AI が考えています…',
       'system.thinkingSlow': '通常より時間がかかっています — もうすぐタイムアウトします。',
       'system.planApproved': 'プランを承認しました。',
       'system.planCancelled': 'プランをキャンセルしました。',
@@ -446,6 +463,9 @@
       'system.switchedTo': '{host} に切り替わりました',
       'system.planError': 'プラン生成に失敗: {error}',
       'system.planErrorDetails': 'プラン生成に失敗: {error}（{details}）',
+      'system.guideOnlyFallback': 'API キー未設定のため、このレシピは Guide 専用チェックリストとして進めます。自分で操作してから「次へ」を押してください。',
+      'system.quickSkipStarted': '現在のタブで Quick skip を開始しました。',
+      'system.quickSkipFailed': 'Quick skip を開始できませんでした: {error}',
 
       // ----- off-tab banner -----
       'offTab.message': '{host}（別タブ）で実行を継続中です。',
@@ -456,7 +476,7 @@
       'options.title.brand': 'Quickstart Copilot',
       'options.title.subtitle': 'オンボーディングを自動進行させる動作を設定します。',
       'options.sec.apiKey': 'Anthropic APIキー',
-      'options.sec.apiKeyDesc': 'ローカルで判断できないときに Claude を呼ぶために必要です。',
+      'options.sec.apiKeyDesc': 'ローカルで判断できないときに、選択中の AI プロバイダーを呼ぶために必要です。',
       'options.apiKey.placeholder': 'sk-ant-...',
       'options.apiKey.helper': 'ブラウザのローカルストレージにのみ保存。api.anthropic.com 以外には送信されません。',
       'options.apiKey.getKey': 'キーを取得 →',
@@ -476,7 +496,7 @@
       'options.behavior.autoStart': 'ページ読み込み時に自動開始',
       'options.behavior.autoStartDesc': 'チュートリアルらしき画面を検出したら、アイコンを押さなくても自動で開始します。',
       'options.sec.privacy': 'プライバシー',
-      'options.privacy.body': '自動進行中、URL・タイトル・可視ボタン/入力のラベルの簡潔なテキスト要約のみ Claude に送信します。スクリーンショット、入力値、ページ本文は送信しません。APIキーはブラウザのローカルストレージにのみ保存されます。',
+      'options.privacy.body': '自動進行中、URL・タイトル・可視ボタン/入力のラベルの簡潔なテキスト要約のみ、選択中の AI プロバイダーに送信します。スクリーンショット、入力値、ページ本文は送信しません。APIキーはブラウザのローカルストレージにのみ保存されます。',
       'options.sec.dev': '開発者',
       'options.dev.desc': '開発モードがONのとき、各コンテキストの console.error / console.warn / 未捕捉例外 / 拒否Promise を全てひとつのリングバッファ（最新200件）に集約します。',
       'options.dev.toggle': '開発モード（エラーキャプチャ）を有効化',
@@ -524,9 +544,9 @@
       'options.mode.rules.desc': '最速。Next / OK / Skip 等の一般パターンをローカルで判定。',
       'options.mode.hybrid.title': 'ハイブリッド',
       'options.mode.hybrid.tag': '既定',
-      'options.mode.hybrid.desc': 'まずルール、迷ったら Claude に聞きます。推奨。',
+      'options.mode.hybrid.desc': 'まずルール、迷ったら AI に聞きます。推奨。',
       'options.mode.ai.title': 'AIのみ',
-      'options.mode.ai.desc': '常に Claude に判断を依頼。最も柔軟だがコスト高。',
+      'options.mode.ai.desc': '常に AI に判断を依頼。最も柔軟だがコスト高。',
       'options.speed.slow.title': '遅い',
       'options.speed.slow.desc': '目で追える速度。',
       'options.speed.normal.title': '普通',
@@ -574,6 +594,7 @@
       'catalog.preview.handoff': '手動で行うステップ',
       'catalog.preview.tokenEstimate': '想定トークン: {min}〜{max}',
       'catalog.preview.confirm': '実行する',
+      'catalog.preview.quickSkip': 'Quick skip',
       'catalog.preview.cancel': 'キャンセル',
 
       // ----- first-run wizard -----
@@ -599,11 +620,15 @@
       'live.heading': '実行中: {title}',
       'live.stepCount': 'ステップ {n} / {total}',
       'live.lastSummary': '直前: {text}',
+      'live.progressAria': '実行進捗',
+      'live.progressText': '{pct}% 完了',
       'live.paused.title': '一時停止 — あなたの番です',
       'live.paused.resume': '続きをやる',
       'live.complete.title': '完了: {title}',
       'live.aborted.title': '停止しました',
       'live.aborted.body': '実行を停止しました。',
+      'live.quickSkip.title': '実行中: Quick skip',
+      'live.quickSkip.done': 'Quick skip が完了しました。',
 
       // ----- pill statuses -----
       'pill.idle': '待機',
@@ -702,6 +727,13 @@
       'confirm.title': '操作の確認',
       'confirm.approved': '✓ 承認しました',
       'confirm.skipped': '↷ スキップしました',
+      'history.ariaRegion': '直近の実行履歴',
+      'history.heading': '直近の実行',
+      'history.empty': 'まだ実行履歴はありません。',
+      'history.unknownRecipe': '自由入力の実行',
+      'history.steps': '{count} ステップ',
+      'history.status.complete': '完了',
+      'history.status.aborted': '中断',
     },
   };
 

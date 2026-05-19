@@ -1,13 +1,18 @@
 // Background service worker for the auto-tutorial extension.
-// Routes messages between popup, sidepanel, content scripts, and Claude.
+// Routes messages between popup, sidepanel, content scripts, and AI providers.
 //
 // Two flows live here side-by-side:
 //   1) Legacy quick-skip (START / STOP / GET_STATE / AI_ANALYZE)
 //   2) Goal-driven copilot (OPEN_PANEL, GOAL_SUBMIT, PLAN_*, STEP_*, ASK_*, etc.)
 // A given tab is in exactly one flow at a time; copilot runs suppress quick-skip START.
 
-import { callClaude, callClaudeForStep } from './ai-client.js';
+import { callAi, callAiForStep } from './ai-client.js';
 import { generatePlan } from './planner.js';
+import {
+  DEFAULT_PROVIDER,
+  defaultModelForProvider,
+  isValidProvider,
+} from './provider-config.js';
 import { loadCatalog, getCatalog } from '../recipes/_loader.js';
 import { runHealthChecks, getHealth } from '../recipes/_health.js';
 
@@ -38,6 +43,8 @@ const MSG = {
   CONFIRM_REQUEST: 'AT_CONFIRM_REQUEST',
   CONFIRM_RESPONSE: 'AT_CONFIRM_RESPONSE',
   USER_STOP: 'AT_USER_STOP',
+  AUTO_START_PROBE: 'AT_AUTO_START_PROBE',
+  GET_RUN_HISTORY: 'AT_GET_RUN_HISTORY',
   // Async-progress visibility:
   AI_PROGRESS: 'AT_AI_PROGRESS',
   ABORT_PLAN: 'AT_ABORT_PLAN',
@@ -241,7 +248,7 @@ function startPlanProgress(tabId) {
         label: elapsed < 8000
           ? 'Drafting a plan…'
           : elapsed < 20000
-            ? 'Still drafting (Claude is thinking)…'
+            ? 'Still drafting (AI is thinking)…'
             : 'Taking longer than usual — you can cancel from the panel.',
       }).catch(() => {});
     } catch {}
@@ -259,9 +266,10 @@ const STORAGE_KEYS = {
 
 const DEFAULTS = {
   MODE: 'hybrid',
-  MODEL: 'claude-haiku-4-5-20251001',
+  MODEL: defaultModelForProvider(DEFAULT_PROVIDER),
   SPEED: 'normal',
   AUTO_START: false,
+  PROVIDER: DEFAULT_PROVIDER,
 };
 
 // ---------------------------------------------------------------------------
@@ -281,18 +289,18 @@ try {
 // model — get Gemini defaults written so the rest of the UI reflects them.
 // Existing, explicitly-set values are NEVER overwritten (backward compat).
 // ---------------------------------------------------------------------------
-const VALID_PROVIDERS_SET = new Set(['gemini', 'deepseek', 'anthropic', 'openai']);
 async function softMigrateGeminiDefaults() {
   try {
     const stored = await chrome.storage.local.get(['at_provider', 'at_model']);
     const patch = {};
     const provider = stored.at_provider;
-    if (typeof provider !== 'string' || !VALID_PROVIDERS_SET.has(provider)) {
-      patch.at_provider = 'gemini';
+    const nextProvider = isValidProvider(provider) ? provider : DEFAULT_PROVIDER;
+    if (provider !== nextProvider) {
+      patch.at_provider = nextProvider;
     }
     const model = stored.at_model;
     if (typeof model !== 'string' || model.trim().length === 0) {
-      patch.at_model = 'gemini-2.5-flash-lite';
+      patch.at_model = defaultModelForProvider(nextProvider);
     }
     if (Object.keys(patch).length > 0) {
       await chrome.storage.local.set(patch);
@@ -391,10 +399,94 @@ function getRun(tabId) {
       // duplicate RUN_COMPLETE/RUN_ABORTED messages don't re-append.
       startedAt: 0,
       historyRecorded: false,
+      goal: '',
+      recipeTitle: null,
+      stepSummaries: [],
+      finalUrl: '',
+      guideOnlyFallback: false,
     };
     runByTab.set(tabId, run);
   }
   return run;
+}
+
+// ---------------------------------------------------------------------------
+// Active run checkpointing.
+//
+// MV3 service workers can be terminated between events, so active run state
+// must not live only in global variables. We checkpoint resumable states to
+// chrome.storage.session: it survives worker restarts but is cleared on browser
+// restart/extension reload, which matches "active run" semantics.
+// ---------------------------------------------------------------------------
+const ACTIVE_RUNS_SESSION_KEY = 'at_active_runs_v1';
+const CHECKPOINTED_RUN_STATUSES = new Set([
+  'awaiting-approval',
+  'running',
+  'waiting-user',
+]);
+
+function canUseSessionStorage() {
+  return !!(chrome && chrome.storage && chrome.storage.session);
+}
+
+function serializeRun(run) {
+  if (!run || !CHECKPOINTED_RUN_STATUSES.has(run.status)) return null;
+  return {
+    plan: Array.isArray(run.plan) ? run.plan.slice(0, 20) : [],
+    currentStepIndex: typeof run.currentStepIndex === 'number' ? run.currentStepIndex : 0,
+    status: run.status,
+    chatHistory: Array.isArray(run.chatHistory) ? run.chatHistory.slice(-40) : [],
+    pendingAskId: typeof run.pendingAskId === 'string' ? run.pendingAskId : null,
+    navigationCount: typeof run.navigationCount === 'number' ? run.navigationCount : 0,
+    lastResumeAt: typeof run.lastResumeAt === 'number' ? run.lastResumeAt : 0,
+    recipeId: typeof run.recipeId === 'string' ? run.recipeId : null,
+    startedAt: typeof run.startedAt === 'number' ? run.startedAt : 0,
+    historyRecorded: Boolean(run.historyRecorded),
+    goal: typeof run.goal === 'string' ? run.goal : '',
+    recipeTitle: typeof run.recipeTitle === 'string' ? run.recipeTitle : null,
+    stepSummaries: Array.isArray(run.stepSummaries) ? run.stepSummaries.slice(-20) : [],
+    finalUrl: typeof run.finalUrl === 'string' ? run.finalUrl : '',
+    guideOnlyFallback: Boolean(run.guideOnlyFallback),
+  };
+}
+
+async function readRunCheckpoints() {
+  if (!canUseSessionStorage()) return {};
+  try {
+    const out = await chrome.storage.session.get(ACTIVE_RUNS_SESSION_KEY);
+    const saved = out && out[ACTIVE_RUNS_SESSION_KEY];
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeRunCheckpoints(saved) {
+  if (!canUseSessionStorage()) return;
+  try {
+    await chrome.storage.session.set({ [ACTIVE_RUNS_SESSION_KEY]: saved });
+  } catch (err) {
+    console.warn('[auto-tutorial] run checkpoint write failed:', err);
+  }
+}
+
+async function persistRunCheckpoint(tabId) {
+  if (typeof tabId !== 'number') return;
+  const run = runByTab.get(tabId);
+  const serialized = serializeRun(run);
+  const saved = await readRunCheckpoints();
+  if (serialized) saved[String(tabId)] = serialized;
+  else delete saved[String(tabId)];
+  await writeRunCheckpoints(saved);
+}
+
+async function clearRunCheckpoint(tabId) {
+  if (typeof tabId !== 'number') return;
+  const saved = await readRunCheckpoints();
+  if (Object.prototype.hasOwnProperty.call(saved, String(tabId))) {
+    delete saved[String(tabId)];
+    await writeRunCheckpoints(saved);
+  }
 }
 
 /**
@@ -429,8 +521,67 @@ function recipeStepPayload(run) {
   };
 }
 
+function pickBilingualText(text, lang = 'en') {
+  if (typeof text === 'string') return text;
+  if (!text || typeof text !== 'object') return '';
+  return text[lang] || text.en || text.ja || '';
+}
+
+function buildGuideOnlyRecipePlan(recipe, lang = 'en') {
+  const expected = Array.isArray(recipe?.expectedSteps) && recipe.expectedSteps.length > 0
+    ? recipe.expectedSteps
+    : [pickBilingualText(recipe?.title, lang) || 'Complete this recipe'];
+  return expected.slice(0, 8).map((label, index) => {
+    const title = typeof label === 'string'
+      ? label
+      : pickBilingualText(label, lang);
+    return {
+      id: `manual-${index + 1}`,
+      title: title || `Step ${index + 1}`,
+      description: title || `Step ${index + 1}`,
+      risk: 'low',
+      expectedOutcome: title || `Step ${index + 1} is complete`,
+      manualOnly: true,
+    };
+  });
+}
+
+async function restoreRunsFromSession() {
+  const saved = await readRunCheckpoints();
+  for (const [tabIdText, raw] of Object.entries(saved)) {
+    const tabId = Number(tabIdText);
+    if (!Number.isFinite(tabId)) continue;
+    if (!raw || typeof raw !== 'object') continue;
+    if (!CHECKPOINTED_RUN_STATUSES.has(raw.status)) continue;
+    const run = getRun(tabId);
+    run.plan = Array.isArray(raw.plan) ? raw.plan : [];
+    run.currentStepIndex =
+      typeof raw.currentStepIndex === 'number' ? raw.currentStepIndex : 0;
+    run.status = raw.status;
+    run.chatHistory = Array.isArray(raw.chatHistory) ? raw.chatHistory : [];
+    run.pendingAskId = typeof raw.pendingAskId === 'string' ? raw.pendingAskId : null;
+    run.navigationCount = typeof raw.navigationCount === 'number' ? raw.navigationCount : 0;
+    run.lastResumeAt = typeof raw.lastResumeAt === 'number' ? raw.lastResumeAt : 0;
+    run.recipeId = typeof raw.recipeId === 'string' ? raw.recipeId : null;
+    run.recipe = resolveRecipe(run.recipeId);
+    run.startedAt = typeof raw.startedAt === 'number' ? raw.startedAt : 0;
+    run.historyRecorded = Boolean(raw.historyRecorded);
+    run.goal = typeof raw.goal === 'string' ? raw.goal : '';
+    run.recipeTitle = typeof raw.recipeTitle === 'string' ? raw.recipeTitle : null;
+    run.stepSummaries = Array.isArray(raw.stepSummaries) ? raw.stepSummaries : [];
+    run.finalUrl = typeof raw.finalUrl === 'string' ? raw.finalUrl : '';
+    run.guideOnlyFallback = Boolean(raw.guideOnlyFallback);
+  }
+}
+
+const restoreRunsReady = restoreRunsFromSession().catch((err) => {
+  console.warn('[auto-tutorial] run checkpoint restore failed:', err);
+});
+
 const MAX_NAVIGATIONS_PER_RUN = 8;
 const RESUME_DEBOUNCE_MS = 800;
+const AUTO_START_DEBOUNCE_MS = 1500;
+const autoStartLastByTab = new Map();
 
 function isCopilotActive(tabId) {
   const run = runByTab.get(tabId);
@@ -439,6 +590,90 @@ function isCopilotActive(tabId) {
     || run.status === 'awaiting-approval'
     || run.status === 'running'
     || run.status === 'waiting-user';
+}
+
+function isBlockedUrl(url) {
+  if (!url) return true;
+  const raw = String(url);
+  if (/^(chrome|chrome-extension|edge|about|view-source):/i.test(raw)) return true;
+  try {
+    const u = new URL(raw);
+    const host = (u.hostname || '').toLowerCase();
+    const path = (u.pathname || '').toLowerCase();
+    if (host === 'chromewebstore.google.com') return true;
+    if (host === 'chrome.google.com' && path.indexOf('/webstore') === 0) return true;
+    if (host === 'accounts.google.com' || host.endsWith('.accounts.google.com')) return true;
+    if (/\/(oauth|authorize|auth|login)(\/|$)/.test(path)) return true;
+  } catch {
+    return true;
+  }
+  return false;
+}
+
+async function hasActiveProviderKey(provider) {
+  const active = isValidProvider(provider) ? provider : DEFAULT_PROVIDER;
+  const keys = ['at_api_key'];
+  if (active === 'gemini') keys.unshift('at_api_key_gemini');
+  if (active === 'deepseek') keys.unshift('at_api_key_deepseek');
+  if (active === 'openai') keys.unshift('at_api_key_openai');
+  try {
+    const out = await chrome.storage.local.get(keys);
+    return keys.some((k) => typeof out?.[k] === 'string' && out[k].trim().length > 0);
+  } catch {
+    return false;
+  }
+}
+
+async function canUseAiForCurrentSettings() {
+  try {
+    const out = await chrome.storage.local.get(['at_provider']);
+    const provider = isValidProvider(out?.at_provider) ? out.at_provider : DEFAULT_PROVIDER;
+    return hasActiveProviderKey(provider);
+  } catch {
+    return false;
+  }
+}
+
+async function maybeAutoStartQuickSkip(tabId, tab) {
+  if (typeof tabId !== 'number') return;
+  if (isCopilotActive(tabId) || runningByTab.get(tabId)) return;
+  const url = (tab && (tab.url || tab.pendingUrl)) || '';
+  if (isBlockedUrl(url)) return;
+
+  let settings;
+  try {
+    settings = await chrome.storage.local.get(['at_auto_start', 'at_mode', 'at_speed']);
+  } catch {
+    return;
+  }
+  if (settings?.at_auto_start !== true) return;
+  const mode = settings.at_mode === 'rules' || settings.at_mode === 'ai'
+    ? settings.at_mode
+    : 'hybrid';
+  if (mode !== 'rules' && !(await canUseAiForCurrentSettings())) return;
+
+  const lastSig = autoStartLastByTab.get(tabId);
+  const sig = `${url}|${mode}`;
+  const now = Date.now();
+  if (lastSig && lastSig.sig === sig && now - lastSig.ts < AUTO_START_DEBOUNCE_MS) return;
+  autoStartLastByTab.set(tabId, { sig, ts: now });
+
+  let probe;
+  try {
+    probe = await chrome.tabs.sendMessage(tabId, { type: MSG.AUTO_START_PROBE });
+  } catch {
+    return;
+  }
+  if (!probe || probe.shouldStart !== true) return;
+
+  try {
+    await chrome.tabs.sendMessage(tabId, { type: MSG.START, tabId });
+    runningByTab.set(tabId, true);
+    broadcastStateChanged(tabId, true);
+  } catch (err) {
+    runningByTab.set(tabId, false);
+    console.warn('[auto-tutorial] auto-start failed:', err && err.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -501,6 +736,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   runningByTab.delete(tabId);
   runByTab.delete(tabId);
+  autoStartLastByTab.delete(tabId);
+  clearRunCheckpoint(tabId).catch(() => {});
 });
 
 // ---------------------------------------------------------------------------
@@ -536,6 +773,7 @@ function abortRunNoContentScript(tabId) {
   }
   console.warn('[auto-tutorial] no content script on tab', tabId,
     '— aborting run (no_content_script)');
+  clearRunCheckpoint(tabId).catch(() => {});
   broadcastToSidepanel({
     type: MSG.RUN_ABORTED,
     tabId,
@@ -573,9 +811,12 @@ async function safeSendToTab(tabId, message) {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status !== 'complete') return;
   const run = runByTab.get(tabId);
-  if (!run || run.status !== 'running') return;
-  if (!Array.isArray(run.plan) || run.plan.length === 0) return;
-  if (run.currentStepIndex >= run.plan.length) return;
+  if (!run || run.status !== 'running' || !Array.isArray(run.plan) || run.plan.length === 0 || run.currentStepIndex >= run.plan.length) {
+    setTimeout(() => {
+      maybeAutoStartQuickSkip(tabId, tab).catch(() => {});
+    }, 500);
+    return;
+  }
 
   // Debounce: tabs.onUpdated can fire 'complete' twice quickly on some sites.
   const now = Date.now();
@@ -584,10 +825,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
   // Loop guard: if a single run has triggered many navigations, abort.
   run.navigationCount = (run.navigationCount || 0) + 1;
+  persistRunCheckpoint(tabId).catch(() => {});
   if (run.navigationCount > MAX_NAVIGATIONS_PER_RUN) {
     console.warn('[auto-tutorial] aborting run: too many navigations on tab', tabId);
     run.status = 'aborted';
     recordRunHistory(run, 'aborted');
+    clearRunCheckpoint(tabId).catch(() => {});
     broadcastToSidepanel({
       type: MSG.RUN_ABORTED,
       tabId,
@@ -642,7 +885,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const targetTabId = senderTabId ?? explicitTabId;
         const hasStepContext = msg.step && typeof msg.step === 'object';
         // For step-mode, emit live AI_PROGRESS ticks so the sidepanel can show
-        // an "Asking Claude… Xs" thinking bubble while the request is in flight.
+        // an "Asking AI..." thinking bubble while the request is in flight.
         let stopTicker = null;
         if (hasStepContext) {
           const startedAt = Date.now();
@@ -650,7 +893,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           try {
             chrome.runtime.sendMessage({
               type: MSG.AI_PROGRESS, tabId: targetTabId, kind: 'step',
-              elapsedMs: 0, label: 'Asking Claude…',
+              elapsedMs: 0, label: 'Asking AI…',
             }).catch(() => {});
           } catch {}
           const intervalId = setInterval(() => {
@@ -660,9 +903,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 type: MSG.AI_PROGRESS, tabId: targetTabId, kind: 'step',
                 elapsedMs: elapsed,
                 label: elapsed < 6000
-                  ? 'Asking Claude…'
+                  ? 'Asking AI…'
                   : elapsed < 18000
-                    ? 'Claude is thinking…'
+                    ? 'AI is thinking…'
                     : 'Taking longer than usual — will timeout soon.',
               }).catch(() => {});
             } catch {}
@@ -680,7 +923,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         try {
           const result = hasStepContext
-            ? await callClaudeForStep({
+            ? await callAiForStep({
               snapshot: msg.snapshot,
               step: msg.step,
               stepIndex: typeof msg.stepIndex === 'number' ? msg.stepIndex : 0,
@@ -694,7 +937,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               lang: await readLang(),
               lastAction: msg.lastAction || null,
             })
-            : await callClaude(msg.snapshot);
+            : await callAi(msg.snapshot);
 
           if (result.ok) {
             sendResponse({ action: result.action });
@@ -729,10 +972,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return;
         }
         const running = msg.type === MSG.START;
+        let forwarded = false;
         try {
           await chrome.tabs.sendMessage(tabId, msg);
+          forwarded = true;
         } catch (err) {
           console.warn('[auto-tutorial] forward to tab failed:', err);
+        }
+        if (!forwarded) {
+          runningByTab.set(tabId, false);
+          broadcastStateChanged(tabId, false);
+          sendResponse({ ok: false, running: false, error: 'no_content_script' });
+          return;
         }
         runningByTab.set(tabId, running);
         broadcastStateChanged(tabId, running);
@@ -851,6 +1102,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           run.plan = [];
           run.currentStepIndex = 0;
           run.pendingAskId = null;
+          run.goal = goal.trim();
+          run.recipeTitle = null;
+          run.stepSummaries = [];
+          run.finalUrl = '';
+          run.guideOnlyFallback = false;
+          await clearRunCheckpoint(tabId);
 
           // Recipe linkage (Section 5). Resolve the recipe — if recipeId is
           // missing or unknown, we keep `run.recipe === null` and the planner
@@ -861,6 +1118,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           const recipe = resolveRecipe(recipeId);
           run.recipeId = recipe ? recipe.id : null;
           run.recipe = recipe || null;
+          run.recipeTitle = recipe ? pickBilingualText(recipe.title, await readLang()) : null;
+
+          if (recipe && !(await canUseAiForCurrentSettings())) {
+            const lang = await readLang();
+            run.plan = buildGuideOnlyRecipePlan(recipe, lang);
+            run.status = 'awaiting-approval';
+            run.guideOnlyFallback = true;
+            broadcastToSidepanel({
+              type: MSG.PLAN_READY,
+              tabId,
+              plan: run.plan,
+              goal,
+              guideOnly: true,
+            });
+            await persistRunCheckpoint(tabId);
+            sendResponse({ ok: true, guideOnly: true });
+            return;
+          }
 
           let url = '';
           let title = '';
@@ -916,9 +1191,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               plan: result.plan,
               goal,
             });
+            await persistRunCheckpoint(tabId);
             sendResponse({ ok: true });
           } else {
             run.status = 'idle';
+            await clearRunCheckpoint(tabId);
             broadcastToSidepanel({
               type: MSG.PLAN_ERROR,
               tabId,
@@ -979,6 +1256,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           step,
           recipe: recipeStepPayload(run),
         });
+        await persistRunCheckpoint(tabId);
         sendResponse({ ok: true });
       })();
       return true;
@@ -994,6 +1272,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         run.pendingAskId = null;
         run.recipeId = null;
         run.recipe = null;
+        clearRunCheckpoint(tabId).catch(() => {});
       }
       sendResponse({ ok: true });
       return false;
@@ -1021,10 +1300,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: true });
           return;
         }
+        if (typeof msg.summary === 'string' && msg.summary.trim()) {
+          run.stepSummaries = Array.isArray(run.stepSummaries) ? run.stepSummaries : [];
+          run.stepSummaries.push(msg.summary.trim());
+        }
         run.currentStepIndex += 1;
         if (run.currentStepIndex >= run.plan.length) {
           run.status = 'done';
+          try {
+            const tab = await chrome.tabs.get(tabId);
+            run.finalUrl = (tab && tab.url) || run.finalUrl || '';
+          } catch { /* ignore */ }
           recordRunHistory(run, 'complete');
+          await clearRunCheckpoint(tabId);
           broadcastToSidepanel({
             type: MSG.RUN_COMPLETE,
             tabId,
@@ -1044,6 +1332,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           step: nextStep,
           recipe: recipeStepPayload(run),
         });
+        await persistRunCheckpoint(tabId);
         sendResponse({ ok: true, complete: false });
       })();
       return true;
@@ -1058,6 +1347,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (typeof msg.question === 'string') {
           run.chatHistory.push({ role: 'assistant_ask', content: msg.question });
         }
+        persistRunCheckpoint(tabId).catch(() => {});
       }
       // Sidepanel got the original from content's broadcast — don't re-emit.
       sendResponse({ ok: true });
@@ -1078,6 +1368,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (typeof msg.reply === 'string') {
           run.chatHistory.push({ role: 'user_reply', content: msg.reply });
         }
+        await persistRunCheckpoint(tabId);
         await safeSendToTab(tabId, {
           type: MSG.USER_REPLY,
           tabId,
@@ -1099,6 +1390,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (summary) {
           run.chatHistory.push({ role: 'assistant_confirm', content: summary });
         }
+        persistRunCheckpoint(tabId).catch(() => {});
       }
       // Same dedup rule.
       sendResponse({ ok: true });
@@ -1120,6 +1412,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           role: 'user_confirm',
           content: msg.approve ? 'approved' : 'declined',
         });
+        await persistRunCheckpoint(tabId);
         await safeSendToTab(tabId, {
           type: MSG.CONFIRM_RESPONSE,
           tabId,
@@ -1144,6 +1437,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         run.pendingAskId = null;
         run.recipeId = null;
         run.recipe = null;
+        clearRunCheckpoint(tabId).catch(() => {});
       }
       // Content -> runtime broadcast reaches sidepanel directly; don't re-emit.
       sendResponse({ ok: true });
@@ -1151,15 +1445,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     case MSG.RUN_COMPLETE: {
-      const tabId = explicitTabId ?? senderTabId;
-      if (typeof tabId === 'number') {
-        const run = getRun(tabId);
-        run.status = 'done';
-      }
-      // Same dedup rule. The SW DOES emit its own RUN_COMPLETE from the
-      // STEP_DONE handler when the last step finishes — that one stays.
-      sendResponse({ ok: true });
-      return false;
+      (async () => {
+        const tabId = explicitTabId ?? senderTabId;
+        if (typeof tabId === 'number') {
+          const run = getRun(tabId);
+          run.status = 'done';
+          if (typeof msg.summary === 'string' && msg.summary.trim()) {
+            run.stepSummaries = Array.isArray(run.stepSummaries) ? run.stepSummaries : [];
+            run.stepSummaries.push(msg.summary.trim());
+          }
+          if (typeof msg.finalUrl === 'string' && msg.finalUrl) {
+            run.finalUrl = msg.finalUrl;
+          } else {
+            try {
+              const tab = await chrome.tabs.get(tabId);
+              run.finalUrl = (tab && tab.url) || run.finalUrl || '';
+            } catch { /* ignore */ }
+          }
+          recordRunHistory(run, 'complete');
+          await clearRunCheckpoint(tabId);
+        }
+        // Same dedup rule. The SW DOES emit its own RUN_COMPLETE from the
+        // STEP_DONE handler when the last step finishes — that one stays.
+        sendResponse({ ok: true });
+      })();
+      return true;
     }
 
     case MSG.RUN_STARTED: {
@@ -1181,6 +1491,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (run.status === 'planning') {
           run.status = 'idle';
         }
+        clearRunCheckpoint(tabId).catch(() => {});
         // Tell the sidepanel a final progress event so it can clear the ticker.
         broadcastToSidepanel({
           type: MSG.AI_PROGRESS, tabId, kind: 'plan',
@@ -1244,6 +1555,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return false;
     }
 
+    case MSG.GET_RUN_HISTORY: {
+      (async () => {
+        try {
+          const out = await chrome.storage.local.get(RUN_HISTORY_KEY);
+          const history = Array.isArray(out && out[RUN_HISTORY_KEY])
+            ? out[RUN_HISTORY_KEY]
+            : [];
+          sendResponse({ ok: true, history });
+        } catch (err) {
+          sendResponse({
+            ok: false,
+            error: 'run_history_failed',
+            details: err && err.message ? String(err.message) : String(err),
+            history: [],
+          });
+        }
+      })();
+      return true;
+    }
+
     case MSG.RECIPE_HEALTH_REFRESH: {
       (async () => {
         try {
@@ -1276,6 +1607,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (typeof tabId === 'number') {
         const run = getRun(tabId);
         run.status = 'waiting-user';
+        persistRunCheckpoint(tabId).catch(() => {});
       }
       sendResponse({ ok: true });
       return false;
@@ -1292,6 +1624,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const run = getRun(tabId);
         // Only flip back to running if we were actually paused on a handoff.
         if (run.status === 'waiting-user') run.status = 'running';
+        await persistRunCheckpoint(tabId);
         await safeSendToTab(tabId, {
           type: MSG.RESUME,
           tabId,
@@ -1342,6 +1675,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         run.plan = [];
         run.currentStepIndex = 0;
         run.pendingAskId = null;
+        await clearRunCheckpoint(tabId);
         await safeSendToTab(tabId, {
           type: MSG.USER_STOP,
           tabId,
@@ -1516,6 +1850,12 @@ async function recordRunHistory(run, status) {
       : 0,
     endedAt: Date.now(),
     status,
+    recipeTitle: typeof run.recipeTitle === 'string' ? run.recipeTitle : null,
+    goal: typeof run.goal === 'string' ? run.goal : '',
+    stepSummaries: Array.isArray(run.stepSummaries)
+      ? run.stepSummaries.slice(-20)
+      : [],
+    finalUrl: typeof run.finalUrl === 'string' ? run.finalUrl : '',
     // stepCount: prefer plan length (the plan can be cleared on abort, so
     // read currentStepIndex as a fallback for completed-before-clearing).
     stepCount: Array.isArray(run.plan) && run.plan.length > 0
@@ -1581,3 +1921,4 @@ async function getActiveTabId() {
 // Suppress unused-var lint warnings for constants kept for parity with content side.
 void STORAGE_KEYS;
 void DEFAULTS;
+void restoreRunsReady;

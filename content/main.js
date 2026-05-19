@@ -34,6 +34,7 @@
     CONFIRM_REQUEST: "AT_CONFIRM_REQUEST",
     CONFIRM_RESPONSE: "AT_CONFIRM_RESPONSE",
     USER_STOP: "AT_USER_STOP",
+    AUTO_START_PROBE: "AT_AUTO_START_PROBE",
     // Recipe-driven handoff (Section 5).
     PAUSED_FOR_HUMAN: "AT_PAUSED_FOR_HUMAN",
     RESUME: "AT_RESUME",
@@ -101,7 +102,7 @@
   // Single-shot guard so we only fire RUN_COMPLETE once on successCriteria.
   var recipeSuccessFired = false;
   // Most recent successfully-executed action of THIS step. Sent to the AI on
-  // every iteration so Claude knows what it just did (prevents click-loops
+  // every iteration so the model knows what it just did (prevents click-loops
   // where the AI keeps clicking the same input field instead of typing).
   var lastAction = null;         // { verb, targetId, text?, detail }
   // chatHistory entries MUST use `{ role, content }` (NOT `text`) — the
@@ -511,7 +512,7 @@
         // Rules-only mode and no rule matched -> nothing actionable.
         pickPromise = Promise.resolve(null);
       } else {
-        // hybrid (no rule match) or pure ai -> consult Claude.
+        // hybrid (no rule match) or pure ai -> consult the active provider.
         pickPromise = requestAiAction(snapshot).then(normalizeAiAction);
       }
 
@@ -734,7 +735,7 @@
   }
 
   // Request an AI action in step mode. Background SW dispatches to
-  // callClaudeForStep when mode === 'step'.
+  // callAiForStep when mode === 'step'.
   function requestAiStepAction(snapshot) {
     return new Promise(function (resolve) {
       if (!currentStep) { resolve(null); return; }
@@ -1050,7 +1051,7 @@
         var text = typeof reply === "string" ? reply
           : (reply && typeof reply.reply === "string" ? reply.reply : String(reply == null ? "" : reply));
         // IMPORTANT: keys MUST be `{ role, content }` — the prompt builder
-        // reads `content`; if we used `text` here Claude would see empty
+        // reads `content`; if we used `text` here the model would see empty
         // strings and keep re-asking the same question forever.
         chatHistory.push({ role: "assistant_ask", content: question });
         chatHistory.push({ role: "user_reply", content: text });
@@ -1427,7 +1428,7 @@
     }
 
     function runStepAi(snapshot) {
-      // hybrid / ai: consult Claude in step mode.
+      // hybrid / ai: consult the active provider in step mode.
       return requestAiStepAction(snapshot).then(function (aiAction) {
         if (shouldStop()) return "stopped";
         if (!aiAction) {
@@ -1506,6 +1507,71 @@
     } catch (e) {}
   }
 
+  function waitForManualAdvance(myGeneration) {
+    return new Promise(function (resolve) {
+      var settled = false;
+      var stopPoll = 0;
+      function stopped() {
+        return stopRequested ||
+          myGeneration !== loopGeneration ||
+          !running ||
+          runMode !== "step";
+      }
+      function cleanup() {
+        if (stopPoll) {
+          clearInterval(stopPoll);
+          stopPoll = 0;
+        }
+        pendingGuide = null;
+      }
+      function finish(outcome) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(outcome);
+      }
+      pendingGuide = {
+        resolve: function () { finish("did-it"); },
+        cleanup: cleanup,
+      };
+      stopPoll = setInterval(function () {
+        if (settled) {
+          clearInterval(stopPoll);
+          return;
+        }
+        if (stopped()) finish("aborted");
+      }, 500);
+    });
+  }
+
+  function runManualOnlyStep(myGeneration) {
+    var step = currentStep && currentStep.step ? currentStep.step : {};
+    var title = collapseWS(step.title || step.description || "");
+    sendStepProgress({
+      stepIndex: currentStep ? currentStep.stepIndex : 0,
+      narration: title || t("guide.waitingFor", "Waiting for you"),
+      action: "guide_wait",
+      detail: t("runMode.next", "Next"),
+    });
+    return waitForManualAdvance(myGeneration).then(function (outcome) {
+      if (
+        outcome === "aborted" ||
+        stopRequested ||
+        myGeneration !== loopGeneration ||
+        !running ||
+        runMode !== "step"
+      ) {
+        finishStepRun("aborted");
+        return;
+      }
+      sendStepDone({
+        success: true,
+        summary: title || t("guide.youDidIt", "Nice — done. Moving on."),
+      });
+      finishStepRun("manual_done");
+    });
+  }
+
   function handleStepStart(msg) {
     if (!msg || typeof msg !== "object" || !msg.step) {
       warn("STEP_START: missing step payload");
@@ -1521,6 +1587,8 @@
       dbg("STEP_START: superseding in-flight step");
       loopGeneration++;
       clearPendingAsks(new Error("superseded"));
+      clearPendingGuide(new Error("superseded"));
+      clearPendingResume(new Error("superseded"));
     }
 
     running = true;
@@ -1564,6 +1632,20 @@
       narration: "Starting step…",
       detail: (currentStep.step && currentStep.step.title) || "",
     });
+
+    if (currentStep.step && currentStep.step.manualOnly) {
+      actionMode = "guide";
+      runManualOnlyStep(loopGeneration).catch(function (err) {
+        warn("manual-only step threw:", err);
+        try {
+          sendRunAborted({
+            reason: "error: " + (err && err.message ? err.message : String(err)),
+          });
+        } catch (e) {}
+        finishStepRun("error");
+      });
+      return;
+    }
 
     readSettings().then(function (settings) {
       if (!running || runMode !== "step") return;
@@ -1936,6 +2018,9 @@
     safeSendBg(MSG.RUN_COMPLETE, {
       summary: title ? ("Completed: " + title) : "Completed",
       recipeId: title || null,
+      finalUrl: (function () {
+        try { return location.href || ""; } catch (e) { return ""; }
+      })(),
     });
     // Stop the local step loop on the next tick.
     stopRequested = true;
@@ -1970,6 +2055,63 @@
     } catch (e) {}
   }
 
+  function probeTutorialPresence() {
+    var dom = getDom();
+    if (!dom || typeof dom.snapshot !== "function") {
+      return { ok: false, shouldStart: false, reason: "no_dom" };
+    }
+    var snapshot;
+    try {
+      snapshot = dom.snapshot();
+    } catch (e) {
+      return { ok: false, shouldStart: false, reason: "snapshot_failed" };
+    }
+    var interactives = Array.isArray(snapshot && snapshot.interactives)
+      ? snapshot.interactives
+      : [];
+    var overlayItems = interactives.filter(function (it) {
+      return !!(it && it.inOverlay);
+    });
+    var text = interactives.map(function (it) {
+      return [it && it.text, it && it.ariaLabel, it && it.placeholder]
+        .filter(Boolean)
+        .join(" ");
+    }).join(" ").toLowerCase();
+    var hasTourMarker = false;
+    try {
+      var marked = document.querySelectorAll("[data-tour], [data-onboarding], [class]");
+      var max = Math.min(marked.length, 500);
+      for (var i = 0; i < max; i++) {
+        var el = marked[i];
+        var cls = (el.className && typeof el.className === "string") ? el.className : "";
+        var hasMarkerAttr = el.hasAttribute &&
+          (el.hasAttribute("data-tour") || el.hasAttribute("data-onboarding"));
+        var hasMarkerClass =
+          /onboard|tutorial|tour|intro|coachmark|guide|walkthrough/i.test(cls);
+        if (isElementVisible(el) && (hasMarkerAttr || hasMarkerClass)) {
+          hasTourMarker = true;
+          break;
+        }
+      }
+    } catch (e) {}
+    var hasTutorialCue =
+      /onboard|tutorial|tour|intro|coachmark|guide|hint|walkthrough|setup|チュートリアル|ガイド|ツアー|案内|初期設定/.test(text);
+    var hasProgressCue =
+      /\b(next|continue|got it|ok|start|begin|skip|dismiss|close)\b|次へ|続ける|開始|始める|スキップ|閉じる/.test(text);
+    var shouldStart =
+      !!(
+        snapshot &&
+        snapshot.overlayPresent &&
+        (hasTutorialCue || hasTourMarker) &&
+        (overlayItems.length > 0 || hasProgressCue)
+      );
+    return {
+      ok: true,
+      shouldStart: shouldStart,
+      reason: shouldStart ? "tutorial_like_overlay" : "no_tutorial_overlay",
+    };
+  }
+
   // ----- message router ----------------------------------------------------
   try {
     chrome.runtime.onMessage.addListener(function (msg, _sender, sendResponse) {
@@ -1989,6 +2131,10 @@
         }
         case MSG.GET_STATE: {
           sendResponse({ running: running, runMode: runMode });
+          return false;
+        }
+        case MSG.AUTO_START_PROBE: {
+          sendResponse(probeTutorialPresence());
           return false;
         }
         case MSG.STEP_START: {

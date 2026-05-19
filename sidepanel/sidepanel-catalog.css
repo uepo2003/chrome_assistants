@@ -277,6 +277,81 @@
   border-top: 1px solid var(--at-border);
 }
 
+.run-history {
+  margin-top: var(--at-sp-4);
+  padding-top: var(--at-sp-3);
+  border-top: 1px solid var(--at-border-soft);
+}
+.run-history__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--at-sp-2);
+  margin-bottom: var(--at-sp-2);
+}
+.run-history__title {
+  margin: 0;
+  font-size: var(--at-fs-sm);
+  font-weight: 700;
+  color: var(--at-fg);
+}
+.run-history__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--at-sp-2);
+  margin: 0;
+  padding: 0;
+}
+.run-history__item {
+  padding: var(--at-sp-2) var(--at-sp-3);
+  border: 1px solid var(--at-border-soft);
+  border-radius: var(--at-radius-2);
+  background: var(--at-bg-sunken);
+}
+.run-history__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--at-sp-2);
+}
+.run-history__name {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--at-fs-sm);
+  font-weight: 700;
+  color: var(--at-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-history__status {
+  flex: none;
+  font-size: 11px;
+  font-family: var(--at-font-mono);
+  color: var(--at-fg-muted);
+}
+.run-history__status[data-status="complete"] { color: var(--at-success); }
+.run-history__status[data-status="aborted"] { color: var(--at-danger); }
+.run-history__meta,
+.run-history__summary {
+  margin: var(--at-sp-1) 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--at-fg-muted);
+}
+.run-history__summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.run-history__empty {
+  margin: 0;
+  font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+}
+
 /* BtoB recipe detail hint + recorder status line (v0.4). */
 .recipe-detail__btob-hint {
   margin-top: var(--at-sp-3);
@@ -502,6 +577,28 @@
 .live__counter {
   margin: 0;
   font-size: var(--at-fs-sm);
+  color: var(--at-fg-muted);
+  font-family: var(--at-font-mono);
+}
+.live__progress {
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--at-bg-sunken);
+  border: 1px solid var(--at-border-soft);
+}
+.live__progress-fill {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--at-accent);
+  transition: width var(--at-dur-2) var(--at-ease-standard);
+}
+.live__progress-text {
+  margin: calc(var(--at-sp-2) * -1) 0 0;
+  font-size: 12px;
   color: var(--at-fg-muted);
   font-family: var(--at-font-mono);
 }

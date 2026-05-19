@@ -9,37 +9,18 @@ import {
   buildStepUserMessage,
   localizationSuffix,
 } from './prompts.js';
+import {
+  STORAGE_KEYS,
+  DEFAULT_PROVIDER,
+  DEFAULT_FALLBACK_PROVIDER,
+  defaultModelForProvider,
+  isKnownModelForProvider,
+  isValidProvider,
+} from './provider-config.js';
 
 // ---------------------------------------------------------------------------
-// Storage key map — source of truth for this file.
-// common/messages.js STORAGE_KEYS must mirror these.
-// ---------------------------------------------------------------------------
-const STORAGE_KEYS = {
-  // Shared API key (used for the ACTIVE provider unless provider-scoped key is set).
-  // Provider-scoped keys: at_api_key_gemini, at_api_key_deepseek, at_api_key_openai.
-  // at_api_key remains for Anthropic (legacy) and as the catch-all.
-  API_KEY:            'at_api_key',
-  API_KEY_GEMINI:     'at_api_key_gemini',
-  API_KEY_DEEPSEEK:   'at_api_key_deepseek',
-  API_KEY_OPENAI:     'at_api_key_openai',
-
-  MODEL:              'at_model',           // model id for active provider
-  PROVIDER:           'at_provider',        // 'gemini'|'deepseek'|'anthropic'|'openai'
-  FALLBACK_PROVIDER:  'at_fallback_provider', // same enum, default 'anthropic'
-};
-
-const DEFAULT_MODEL_BY_PROVIDER = {
-  gemini:     'gemini-2.5-flash-lite',
-  deepseek:   'deepseek-chat',
-  anthropic:  'claude-haiku-4-5-20251001',
-  openai:     'gpt-4o-mini',
-};
-
-// Gemini is the default/primary provider (cost: AI Studio free tier → $0 start).
-const DEFAULT_PROVIDER          = 'gemini';
-const DEFAULT_FALLBACK_PROVIDER = 'anthropic';
-
 // Provider API endpoints
+// ---------------------------------------------------------------------------
 const ENDPOINTS = {
   anthropic: 'https://api.anthropic.com/v1/messages',
   openai:    'https://api.openai.com/v1/chat/completions',
@@ -95,11 +76,13 @@ export async function getModel() {
   try {
     const out = await chrome.storage.local.get([STORAGE_KEYS.MODEL, STORAGE_KEYS.PROVIDER]);
     const model = out?.[STORAGE_KEYS.MODEL];
-    if (typeof model === 'string' && model.length > 0) return model;
-    const provider = out?.[STORAGE_KEYS.PROVIDER] || DEFAULT_PROVIDER;
-    return DEFAULT_MODEL_BY_PROVIDER[provider] || DEFAULT_MODEL_BY_PROVIDER.gemini;
+    const provider = isValidProvider(out?.[STORAGE_KEYS.PROVIDER])
+      ? out[STORAGE_KEYS.PROVIDER]
+      : DEFAULT_PROVIDER;
+    if (isKnownModelForProvider(provider, model)) return model;
+    return defaultModelForProvider(provider);
   } catch {
-    return DEFAULT_MODEL_BY_PROVIDER[DEFAULT_PROVIDER];
+    return defaultModelForProvider(DEFAULT_PROVIDER);
   }
 }
 
@@ -108,7 +91,7 @@ async function getProvider() {
   try {
     const out = await chrome.storage.local.get(STORAGE_KEYS.PROVIDER);
     const p = out?.[STORAGE_KEYS.PROVIDER];
-    return p && DEFAULT_MODEL_BY_PROVIDER[p] ? p : DEFAULT_PROVIDER;
+    return isValidProvider(p) ? p : DEFAULT_PROVIDER;
   } catch {
     return DEFAULT_PROVIDER;
   }
@@ -119,7 +102,8 @@ async function getFallbackProvider() {
   try {
     const out = await chrome.storage.local.get(STORAGE_KEYS.FALLBACK_PROVIDER);
     const p = out?.[STORAGE_KEYS.FALLBACK_PROVIDER];
-    return p && DEFAULT_MODEL_BY_PROVIDER[p] ? p : DEFAULT_FALLBACK_PROVIDER;
+    if (p === 'none') return 'none';
+    return isValidProvider(p) ? p : DEFAULT_FALLBACK_PROVIDER;
   } catch {
     return DEFAULT_FALLBACK_PROVIDER;
   }
@@ -133,7 +117,7 @@ async function getFallbackProvider() {
  * Call the active provider with the snapshot, returning a validated action.
  * Legacy quick-skip flow.
  */
-export async function callClaude(snapshot, opts) {
+export async function callAi(snapshot, opts) {
   const lang = opts && opts.lang;
   return callMessages({
     system: SYSTEM_PROMPT + localizationSuffix(lang),
@@ -148,7 +132,7 @@ export async function callClaude(snapshot, opts) {
 /**
  * Call the active provider for a single step in the goal-driven copilot flow.
  */
-export async function callClaudeForStep({
+export async function callAiForStep({
   snapshot,
   step,
   stepIndex,
@@ -168,6 +152,10 @@ export async function callClaudeForStep({
     signal,
   });
 }
+
+// Backward-compatible aliases. Older callers still import these names.
+export const callClaude = callAi;
+export const callClaudeForStep = callAiForStep;
 
 /**
  * Shared provider-routed call for any text generation (used by planner.js and
@@ -201,9 +189,9 @@ export async function callProvider({ system, user, maxTokens, signal, timeoutMs 
   if (primary.ok) return primary;
 
   // Automatic single retry with fallback if error is recoverable AND fallback differs.
-  if (isRetryable(primary.error) && fallback && fallback !== provider) {
+  if (isRetryable(primary.error) && fallback && fallback !== 'none' && fallback !== provider) {
     const fbKey   = await getApiKey(fallback);
-    const fbModel = DEFAULT_MODEL_BY_PROVIDER[fallback] || model;
+    const fbModel = defaultModelForProvider(fallback) || model;
     if (fbKey) {
       const fallbackResult = await _fetchProvider(
         fallback, fbModel, fbKey, system, user, maxTokens, timeout, signal,

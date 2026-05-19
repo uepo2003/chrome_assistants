@@ -186,14 +186,11 @@
   function renderAction() {
     const hasApiKey = !!state.apiKey;
 
-    // Toggle warning vs action sections
+    // Keep the sidepanel as the front door even without an API key. AI-backed
+    // quick-skip is what needs a key; the catalog, first-run wizard, Guide
+    // mode, and rules-only demos should still be reachable.
     els.warningSection.hidden = hasApiKey;
-    els.actionSection.hidden = !hasApiKey;
-
-    if (!hasApiKey) {
-      // Warning variant — primary button is "Open settings", handled below.
-      return;
-    }
+    els.actionSection.hidden = false;
 
     // Button label
     els.primaryBtn.textContent = state.running
@@ -217,13 +214,20 @@
       disabled = true;
       hint = tt('popup.noTab');
       title = tt('popup.noTab');
+    } else if (!hasApiKey && state.mode !== 'rules' && !state.running) {
+      disabled = true;
+      hint = tt('popup.quickSkipNeedsKey');
+      title = tt('popup.quickSkipNeedsKey');
     }
 
     els.primaryBtn.disabled = disabled;
     els.primaryBtn.title = title;
     if (els.openCopilotBtn) {
-      els.openCopilotBtn.disabled = disabled;
-      els.openCopilotBtn.title = title;
+      const sidepanelDisabled = !state.canRunHere || state.tabId == null;
+      els.openCopilotBtn.disabled = sidepanelDisabled;
+      els.openCopilotBtn.title = sidepanelDisabled
+        ? (state.tabId == null ? tt('popup.noTab') : tt('popup.cannotRunHere'))
+        : '';
     }
 
     if (hint) {
@@ -421,7 +425,7 @@
     renderAll();
 
     // 3) Ask background for current run state for this tab.
-    if (state.apiKey && state.canRunHere && state.tabId != null) {
+    if (state.canRunHere && state.tabId != null) {
       const result = await sendMessageSafe({
         type: MSG.GET_STATE,
         tabId: state.tabId,

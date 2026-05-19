@@ -34,6 +34,10 @@
     (MSG && MSG.GET_RECIPE_CATALOG) || "AT_GET_RECIPE_CATALOG";
   const MSG_RECIPE_HEALTH_UPDATED =
     (MSG && MSG.RECIPE_HEALTH_UPDATED) || "AT_RECIPE_HEALTH_UPDATED";
+  const MSG_GET_RUN_HISTORY =
+    (MSG && MSG.GET_RUN_HISTORY) || "AT_GET_RUN_HISTORY";
+  const MSG_START = (MSG && MSG.START) || "AT_START";
+  const MSG_STATE_CHANGED = (MSG && MSG.STATE_CHANGED) || "AT_STATE_CHANGED";
   const RMSG = globalThis.__AT_RECORDER_MSG__ || {
     START: "AT_RECORDER_START",
     STOP: "AT_RECORDER_STOP",
@@ -89,6 +93,9 @@
     currentRecipe: null,    // recipe being shown in detail/preview
     runningRecipe: null,    // recipe whose run is in progress
     lastSummaryByStep: new Map(),
+    guideOnlyFallback: false,
+    runHistory: [],
+    quickSkipActive: false,
 
     // Run mode (Auto vs Guide). Persisted to chrome.storage.local.
     runModeChoice: "auto",  // 'auto' | 'guide'
@@ -158,6 +165,8 @@
     livePillLabel: $("livePillLabel"),
     liveHeading: $("liveHeading"),
     liveCounter: $("liveCounter"),
+    liveProgressFill: $("liveProgressFill"),
+    liveProgressText: $("liveProgressText"),
     liveSummary: $("liveSummary"),
     liveStopBtn: $("liveStopBtn"),
     pausedPanel: $("pausedPanel"),
@@ -196,6 +205,11 @@
     previewHandoffSection: $("recipePreviewHandoffSection"),
     previewTokens: $("recipePreviewTokens"),
     previewConfirmBtn: $("recipePreviewConfirmBtn"),
+    previewQuickSkipBtn: $("recipePreviewQuickSkipBtn"),
+
+    runHistory: $("runHistory"),
+    runHistoryList: $("runHistoryList"),
+    runHistoryEmpty: $("runHistoryEmpty"),
   };
 
   // ------------------------------------------------------ i18n (translate) -
@@ -262,7 +276,7 @@
     // guided run is in flight (in case the page swallows their click).
     if (dom.guideNextBtn) {
       const guideActive =
-        state.runModeChoice === "guide" &&
+        (state.runModeChoice === "guide" || state.guideOnlyFallback) &&
         (s === "running" || s === "waiting-user");
       dom.guideNextBtn.hidden = !guideActive;
     }
@@ -286,16 +300,21 @@
     const isLive = s !== "idle";
     if (dom.liveRun) dom.liveRun.hidden = !isLive;
     updateLivePill(s);
+    updateLiveProgress();
 
     if (s === "idle") {
       // Returning to home — reset run-specific UI.
       state.runningRecipe = null;
+      state.guideOnlyFallback = false;
+      state.quickSkipActive = false;
       state.currentStepIndex = -1;
       state.totalSteps = 0;
       state.lastSummaryByStep.clear();
       if (dom.liveCounter) dom.liveCounter.textContent = "";
+      if (dom.liveProgressText) dom.liveProgressText.textContent = "";
       if (dom.liveSummary) dom.liveSummary.textContent = "";
       if (dom.liveHeading) dom.liveHeading.textContent = "—";
+      updateLiveProgress();
     }
   }
 
@@ -329,6 +348,29 @@
       dom.liveCounter.textContent = tr("live.stepCount", { n, total: state.totalSteps });
     } else {
       dom.liveCounter.textContent = "";
+    }
+    updateLiveProgress();
+  }
+
+  function updateLiveProgress() {
+    const total = Math.max(0, state.totalSteps || 0);
+    let done = 0;
+    if (state.runState === "done" && total > 0) {
+      done = total;
+    } else if (state.currentStepIndex >= 0) {
+      done = Math.min(total, state.currentStepIndex);
+      if (state.runState === "running" || state.runState === "waiting-user" || state.runState === "paused") {
+        done = Math.min(total, state.currentStepIndex + 1);
+      }
+    }
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    if (dom.liveProgressFill) dom.liveProgressFill.style.width = pct + "%";
+    const bar = dom.liveProgressFill && dom.liveProgressFill.parentElement;
+    if (bar) bar.setAttribute("aria-valuenow", String(pct));
+    if (dom.liveProgressText) {
+      dom.liveProgressText.textContent = total > 0
+        ? tr("live.progressText", { pct })
+        : "";
     }
   }
 
@@ -668,15 +710,18 @@
           if (resp && resp.ok && Array.isArray(resp.recipes)) {
             state.catalog = resp.recipes;
             renderCatalog();
+            loadRunHistory();
           } else {
             state.catalog = [];
             renderCatalog();
+            loadRunHistory();
           }
         }
       );
     } catch (_e) {
       state.catalog = [];
       renderCatalog();
+      loadRunHistory();
     }
   }
 
@@ -913,6 +958,74 @@
       const group = el("section", { className: "catalog__group" }, [groupHead, grid]);
       dom.catalogGroups.appendChild(group);
     }
+  }
+
+  function loadRunHistory() {
+    if (!dom.runHistoryList) return;
+    sendAsync(MSG_GET_RUN_HISTORY, {}).then((resp) => {
+      state.runHistory = resp && resp.ok && Array.isArray(resp.history)
+        ? resp.history
+        : [];
+      renderRunHistory();
+    });
+  }
+
+  function recipeTitleById(id) {
+    const found = state.catalog.find((r) => r && r.id === id);
+    return found ? (bi(found.title) || found.id) : "";
+  }
+
+  function formatHistoryTime(ts) {
+    if (typeof ts !== "number" || ts <= 0) return "";
+    try {
+      return new Intl.DateTimeFormat(currentLang() === "ja" ? "ja-JP" : "en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(ts));
+    } catch (_e) {
+      return new Date(ts).toLocaleString();
+    }
+  }
+
+  function renderRunHistory() {
+    if (!dom.runHistoryList) return;
+    dom.runHistoryList.innerHTML = "";
+    const rows = Array.isArray(state.runHistory)
+      ? state.runHistory.slice(-20).reverse()
+      : [];
+    if (dom.runHistoryEmpty) dom.runHistoryEmpty.hidden = rows.length > 0;
+    rows.forEach((entry) => {
+      const name =
+        entry.recipeTitle ||
+        recipeTitleById(entry.recipeId) ||
+        entry.goal ||
+        tr("history.unknownRecipe");
+      const status = entry.status === "complete" ? "complete" : "aborted";
+      const summary = Array.isArray(entry.stepSummaries) && entry.stepSummaries.length > 0
+        ? entry.stepSummaries[entry.stepSummaries.length - 1]
+        : "";
+      const metaBits = [
+        formatHistoryTime(entry.endedAt),
+        tr("history.steps", { count: entry.stepCount || 0 }),
+      ].filter(Boolean);
+      const item = el("li", { className: "run-history__item" }, [
+        el("div", { className: "run-history__row" }, [
+          el("p", { className: "run-history__name", text: name }),
+          el("span", {
+            className: "run-history__status",
+            text: tr(`history.status.${status}`),
+            attrs: { "data-status": status },
+          }),
+        ]),
+        el("p", { className: "run-history__meta", text: metaBits.join(" · ") }),
+      ]);
+      if (summary) {
+        item.appendChild(el("p", { className: "run-history__summary", text: summary }));
+      }
+      dom.runHistoryList.appendChild(item);
+    });
   }
 
   // -------- Recipe detail modal --------------------------------------------
@@ -1167,6 +1280,7 @@
     if (!recipe || recipe.disabled) return;
     if (!state.tabId) return;
     state.runningRecipe = recipe;
+    state.guideOnlyFallback = false;
     state.goal = bi(recipe.title);
     state.totalSteps = recipe.estimatedSteps || 0;
     state.currentStepIndex = -1;
@@ -1188,6 +1302,32 @@
       goal: bi(recipe.title),
       recipeId: recipe.id,
     });
+  }
+
+  async function quickSkipCurrentTab() {
+    if (!state.tabId) return;
+    closeRecipePreview();
+    state.quickSkipActive = true;
+    state.runningRecipe = null;
+    state.goal = "quick-skip";
+    state.totalSteps = 1;
+    state.currentStepIndex = 0;
+    if (dom.liveHeading) dom.liveHeading.textContent = tr("live.quickSkip.title");
+    if (dom.liveSummary) dom.liveSummary.textContent = tr("system.quickSkipStarted");
+    updateLiveCounter();
+    setRunState("running");
+    const resp = await sendAsync(MSG_START, { tabId: state.tabId });
+    if (!resp || resp.ok === false) {
+      state.quickSkipActive = false;
+      appendAgent(
+        tr("system.quickSkipFailed", { error: (resp && resp.error) || "unknown" }),
+        "error",
+        (resp && resp.error) || ""
+      );
+      if (dom.liveHeading) dom.liveHeading.textContent = tr("live.aborted.title");
+      if (dom.liveSummary) dom.liveSummary.textContent = tr("live.aborted.body");
+      setRunState("aborted");
+    }
   }
 
   // -------- Open-ended toggle ----------------------------------------------
@@ -1236,6 +1376,7 @@
     if (!goal || !state.tabId) return;
     state.goal = goal;
     state.runningRecipe = null;
+    state.guideOnlyFallback = false;
     state.totalSteps = 0;
     state.currentStepIndex = -1;
     if (dom.liveHeading) dom.liveHeading.textContent = goal;
@@ -1475,6 +1616,13 @@
     if (isDuplicate(msg)) return;
 
     switch (msg.type) {
+      case MSG_STATE_CHANGED:
+        if (state.quickSkipActive && msg.running === false) {
+          state.quickSkipActive = false;
+          if (dom.liveSummary) dom.liveSummary.textContent = tr("live.quickSkip.done");
+          setRunState("done");
+        }
+        break;
       case MSG.AI_PROGRESS: {
         const kind = msg.kind || "plan";
         const elapsed = typeof msg.elapsedMs === "number" ? msg.elapsedMs : 0;
@@ -1507,8 +1655,10 @@
       }
       case MSG.PLAN_READY:
         hideThinking();
+        state.guideOnlyFallback = !!msg.guideOnly;
         if (state.nodes.planCard) state.nodes.planCard.remove();
         renderPlanCard(msg.plan);
+        if (msg.guideOnly) appendSystem(tr("system.guideOnlyFallback"));
         setRunState("awaiting-approval");
         break;
       case MSG.PLAN_ERROR: {
@@ -1564,6 +1714,7 @@
         break;
       }
       case MSG.RUN_COMPLETE:
+        state.quickSkipActive = false;
         appendSystem(tr("system.runComplete") + (msg.summary ? `: ${msg.summary}` : ""));
         if (dom.liveSummary && msg.summary) {
           dom.liveSummary.textContent = tr("live.lastSummary", { text: msg.summary });
@@ -1574,20 +1725,24 @@
           });
         }
         setRunState("done");
+        setTimeout(loadRunHistory, 250);
         break;
       case MSG.RUN_ABORTED:
+        state.quickSkipActive = false;
         if (msg.reason === "no_content_script") {
           // Runtime resilience (spec): friendly localized message + drop
           // straight back to the catalog instead of a stuck "running" UI.
           appendSystem(tr("error.noContentScript"));
           setRunState("idle");
           showCatalog();
+          setTimeout(loadRunHistory, 250);
           break;
         }
         appendSystem(tr("system.runAborted", { reason: msg.reason || "" }));
         if (dom.liveHeading) dom.liveHeading.textContent = tr("live.aborted.title");
         if (dom.liveSummary) dom.liveSummary.textContent = tr("live.aborted.body");
         setRunState("aborted");
+        setTimeout(loadRunHistory, 250);
         break;
       case MSG.ASK_USER:
         appendAskEntry({
@@ -1806,6 +1961,9 @@
         if (r) runRecipe(r);
       });
     }
+    if (dom.previewQuickSkipBtn) {
+      dom.previewQuickSkipBtn.addEventListener("click", quickSkipCurrentTab);
+    }
 
     // Upgrade banner.
     if (dom.upgradeBannerDismiss) {
@@ -1835,6 +1993,7 @@
           // Re-render catalog/live so bilingual text follows the new language.
           renderChips();
           renderCatalog();
+          renderRunHistory();
           updateLivePill(state.runState);
           updateLiveCounter();
           if (state.runState !== "idle" && state.tabId !== state.visibleTabId) {

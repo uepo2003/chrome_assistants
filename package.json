@@ -3,6 +3,8 @@
   "private": true,
   "description": "Chrome MV3 extension (Quickstart Copilot) — local scripts only, no bundler.",
   "scripts": {
-    "i18n-check": "node scripts/i18n-check.js"
+    "i18n-check": "node scripts/i18n-check.js",
+    "architecture-check": "node scripts/architecture-check.js",
+    "check": "npm run i18n-check && npm run architecture-check"
   }
 }

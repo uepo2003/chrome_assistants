@@ -50,6 +50,7 @@ const MSG_RECIPE_HEALTH_UPDATED = 'AT_RECIPE_HEALTH_UPDATED';
 const VALID_MODES  = new Set(['rules', 'hybrid', 'ai']);
 const VALID_SPEEDS = new Set(['slow', 'normal', 'fast']);
 const VALID_PROVIDERS = new Set(['gemini', 'deepseek', 'anthropic', 'openai']);
+const VALID_FALLBACK_PROVIDERS = new Set(['gemini', 'deepseek', 'anthropic', 'openai', 'none']);
 
 // DOM refs
 const $ = (id) => document.getElementById(id);
@@ -294,7 +295,9 @@ async function loadSettings() {
     : DEFAULTS.PROVIDER;
   if (providerSelect) providerSelect.value = provider;
 
-  const fbProvider = stored[KEYS.FALLBACK_PROVIDER] || DEFAULTS.FALLBACK_PROVIDER;
+  const fbProvider = VALID_FALLBACK_PROVIDERS.has(stored[KEYS.FALLBACK_PROVIDER])
+    ? stored[KEYS.FALLBACK_PROVIDER]
+    : DEFAULTS.FALLBACK_PROVIDER;
   if (fallbackProviderSelect) fallbackProviderSelect.value = fbProvider;
 
   // Model dropdown — populate for the active provider first
