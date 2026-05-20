@@ -1241,20 +1241,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         run.startedAt = Date.now();
         run.historyRecorded = false;
 
-        broadcastToSidepanel({
-          type: MSG.RUN_STARTED,
-          tabId,
-          plan: run.plan,
-        });
-
         const step = run.plan[0];
-        await safeSendToTab(tabId, {
+        const startResult = await safeSendToTab(tabId, {
           type: MSG.STEP_START,
           tabId,
           stepIndex: 0,
           totalSteps: run.plan.length,
           step,
           recipe: recipeStepPayload(run),
+        });
+        if (!startResult.ok) {
+          run.status = 'aborted';
+          await clearRunCheckpoint(tabId);
+          sendResponse({
+            ok: false,
+            error: startResult.aborted ? 'no_content_script' : 'step_start_failed',
+          });
+          return;
+        }
+        broadcastToSidepanel({
+          type: MSG.RUN_STARTED,
+          tabId,
+          plan: run.plan,
         });
         await persistRunCheckpoint(tabId);
         sendResponse({ ok: true });
