@@ -33,10 +33,21 @@
     "input:not([type=hidden])",
     "select",
     "textarea",
+    '[contenteditable="true"]',
+    '[contenteditable=""]',
     "[role=button]",
     "[role=link]",
+    "[role=checkbox]",
+    "[role=combobox]",
+    "[role=listbox]",
     "[role=menuitem]",
+    "[role=menuitemcheckbox]",
+    "[role=menuitemradio]",
     "[role=tab]",
+    "[role=option]",
+    "[role=radio]",
+    "[role=switch]",
+    "[role=textbox]",
     '[tabindex]:not([tabindex="-1"])',
     "[onclick]",
     "[data-tour]",
@@ -117,16 +128,70 @@
     return s.slice(0, n - 1) + "…";
   }
 
+  function attr(el, name) {
+    try {
+      var v = el.getAttribute && el.getAttribute(name);
+      return v && String(v).trim() ? String(v) : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function uniquePush(parts, value) {
+    var s = collapseWhitespace(String(value || ""));
+    if (!s) return;
+    if (parts.indexOf(s) === -1) parts.push(s);
+  }
+
+  function textFromIdRefs(refs) {
+    var out = [];
+    if (!refs) return "";
+    String(refs).split(/\s+/).forEach(function (id) {
+      if (!id) return;
+      try {
+        var node = document.getElementById(id);
+        if (node) uniquePush(out, node.innerText || node.textContent || "");
+      } catch (e) {}
+    });
+    return out.join(" ");
+  }
+
+  function associatedLabelText(el) {
+    var parts = [];
+    uniquePush(parts, textFromIdRefs(attr(el, "aria-labelledby")));
+    var id = attr(el, "id");
+    if (id && window.CSS && typeof window.CSS.escape === "function") {
+      try {
+        var label = document.querySelector('label[for="' + window.CSS.escape(id) + '"]');
+        if (label) uniquePush(parts, label.innerText || label.textContent || "");
+      } catch (e) {}
+    }
+    try {
+      var wrappingLabel = el.closest && el.closest("label");
+      if (wrappingLabel) uniquePush(parts, wrappingLabel.innerText || wrappingLabel.textContent || "");
+    } catch (e) {}
+    return parts.join(" ");
+  }
+
   function visibleText(el) {
-    var aria = el.getAttribute && el.getAttribute("aria-label");
-    if (aria && aria.trim()) return cap(collapseWhitespace(aria), MAX_TEXT_LEN);
+    var parts = [];
+    var aria = attr(el, "aria-label");
+    uniquePush(parts, aria);
+    uniquePush(parts, associatedLabelText(el));
     var t = "";
     try {
       t = el.innerText || "";
     } catch (e) {
       t = el.textContent || "";
     }
-    return cap(collapseWhitespace(t), MAX_TEXT_LEN);
+    uniquePush(parts, t);
+    uniquePush(parts, attr(el, "placeholder"));
+    uniquePush(parts, attr(el, "title"));
+    var tag = (el.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") {
+      uniquePush(parts, attr(el, "name"));
+    }
+    return cap(collapseWhitespace(parts.join(" ")), MAX_TEXT_LEN);
   }
 
   function isOverlayElement(el, vp) {
@@ -288,6 +353,8 @@
       var text = visibleText(el);
       var ariaLabel = (el.getAttribute && el.getAttribute("aria-label")) || null;
       var placeholder = (el.getAttribute && el.getAttribute("placeholder")) || null;
+      var name = (el.getAttribute && el.getAttribute("name")) || null;
+      var title = (el.getAttribute && el.getAttribute("title")) || null;
       var type = null;
       if (tr.tag === "input" || tr.tag === "button") {
         type = (el.getAttribute && el.getAttribute("type")) || null;
@@ -314,6 +381,8 @@
         text: text,
         ariaLabel: ariaLabel,
         placeholder: placeholder,
+        name: name,
+        title: title,
         type: type,
         rect: {
           x: Math.round(r.left),
@@ -355,6 +424,8 @@
         text: it.text,
         ariaLabel: it.ariaLabel,
         placeholder: it.placeholder,
+        name: it.name,
+        title: it.title,
         type: it.type,
         rect: it.rect,
         visible: it.visible,

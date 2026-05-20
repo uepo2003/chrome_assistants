@@ -23,6 +23,13 @@ export const recipe = {
   prerequisites: ['requires-account'],
   humanHandoffPoints: [
     {
+      when: 'sign-in',
+      why: {
+        en: 'Sign in to Supabase yourself if the dashboard asks for credentials.',
+        ja: 'Supabase のログイン画面が出たら、自分でサインインしてください。',
+      },
+    },
+    {
       when: 'pick-password',
       why: {
         en: "Set a database password yourself — we won't generate or store one.",

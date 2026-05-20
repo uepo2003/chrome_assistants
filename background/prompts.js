@@ -260,10 +260,16 @@ export const STEP_SYSTEM_PROMPT = [
   '  listed in the snapshot. Never invent ids.',
   '- When the step\'s expectedOutcome is already visible on the page, return',
   '  {"action":"done","reason":"..."}.',
+  '- If the current URL or visible DOM shows the flow has already advanced',
+  '  beyond this step, return {"action":"done","reason":"..."} immediately.',
+  '  Do not keep searching for a button or field from an earlier page.',
   '- Use confirm BEFORE clicking or navigating for anything destructive,',
   '  transactional, publishing, or that leaves the current origin.',
   '- Never invent navigation URLs that you did not see in the page or that the',
   '  user did not provide.',
+  '- Never ask for, type, or expose passwords, API keys, tokens, or payment',
+  '  details. If such a field blocks the flow, ask the user to handle it',
+  '  directly and continue only after they have done so.',
   '',
   'ABSOLUTE RULES (violation = broken UX):',
   '1. INPUT FIELDS: clicking an input is NOT enough. Once you have clicked an',
@@ -385,11 +391,10 @@ function renderInteractives(interactives, budget) {
   let used = 0;
   for (const el of interactives) {
     const id = truncate(String(el?.id ?? ''), 16);
-    const tag = truncate(String(el?.tag ?? ''), 16);
-    const label = truncate(
-      String(el?.text ?? el?.aria ?? '').replace(/\s+/g, ' ').trim(),
-      120,
-    );
+    const type = String(el?.type ?? '').replace(/\s+/g, ' ').trim();
+    const tagBase = String(el?.tag ?? '').replace(/\s+/g, ' ').trim();
+    const tag = truncate(type ? `${tagBase}[${type}]` : tagBase, 24);
+    const label = truncate(compactElementLabel(el), 140);
     const role = truncate(String(el?.role ?? ''), 24);
     const line = `${id} | ${tag} | ${label} | ${role}`;
     if (used + line.length + 1 > budget) {
@@ -400,6 +405,22 @@ function renderInteractives(interactives, budget) {
     used += line.length + 1;
   }
   return { lines, used };
+}
+
+function compactElementLabel(el) {
+  const parts = [];
+  const push = (value, prefix = '') => {
+    const s = String(value ?? '').replace(/\s+/g, ' ').trim();
+    if (!s) return;
+    const rendered = prefix ? `${prefix}:${s}` : s;
+    if (!parts.includes(rendered)) parts.push(rendered);
+  };
+  push(el?.text);
+  push(el?.ariaLabel ?? el?.aria);
+  push(el?.placeholder, 'placeholder');
+  push(el?.name, 'name');
+  push(el?.title, 'title');
+  return parts.join(' / ');
 }
 
 function renderChatTail(chatHistory) {

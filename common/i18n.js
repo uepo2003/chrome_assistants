@@ -306,6 +306,15 @@
       'guide.waitingStill': 'Still waiting for you — do the highlighted step, or press Next.',
       'guide.timedOut': 'Taking a while. Finish the step yourself, then press Next.',
       'guide.youDidIt': 'Nice — done. Moving on.',
+      'guide.confirm.title': 'Done?',
+      'guide.confirm.body.click': 'Complete the highlighted action, then choose Yes.',
+      'guide.confirm.body.type': 'Fill the highlighted field, then choose Yes.',
+      'guide.confirm.yes': 'Yes',
+      'guide.confirm.no': 'No',
+      'guide.confirm.afterAction': 'Looks like you interacted with the target. Choose Yes if it is complete.',
+      'guide.confirm.tip.click': 'Tip: click or select the highlighted item. If a menu opened, choose the intended option, then press Yes.',
+      'guide.confirm.tip.type': 'Tip: type the needed value into the highlighted field. When the value is visible, press Yes.',
+      'guide.confirm.tip.generic': 'Tip: finish the highlighted step on the page, then press Yes. The sidepanel Next button also works.',
       'cache.usedCached': 'Used a remembered shortcut',
 
       // ----- errors (new) -----
@@ -657,6 +666,15 @@
       'guide.waitingStill': 'まだお待ちしています — ハイライトの操作を行うか「次へ」を押してください。',
       'guide.timedOut': '少し時間がかかっています。ご自身で操作してから「次へ」を押してください。',
       'guide.youDidIt': 'できました — 次に進みます。',
+      'guide.confirm.title': '完了しましたか？',
+      'guide.confirm.body.click': 'ハイライトされた操作を完了したら「はい」を押してください。',
+      'guide.confirm.body.type': 'ハイライトされた入力欄に入力できたら「はい」を押してください。',
+      'guide.confirm.yes': 'はい',
+      'guide.confirm.no': 'いいえ',
+      'guide.confirm.afterAction': '対象を操作したようです。完了していれば「はい」を押してください。',
+      'guide.confirm.tip.click': 'ヒント: ハイライトされた項目をクリックまたは選択してください。メニューが開いた場合は目的の候補まで選んでから「はい」です。',
+      'guide.confirm.tip.type': 'ヒント: 必要な値をハイライトされた欄に入力してください。値が見えていれば「はい」を押してください。',
+      'guide.confirm.tip.generic': 'ヒント: ページ上でハイライトされた操作を終えたら「はい」を押してください。サイドパネルの「次へ」でも進めます。',
       'cache.usedCached': '記憶したショートカットを使いました',
 
       // ----- errors (new) -----

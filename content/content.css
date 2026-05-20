@@ -6,7 +6,8 @@
  * Design intent (BtoB pivot): the cursor must read as a friendly AI guide
  * sitting next to the user — large, high-contrast accent, an obvious
  * pointer affordance, and a readable label bubble on both light and dark
- * pages. pointer-events:none everywhere so it never blocks real input. */
+ * pages. The cursor itself never blocks input; the guide confirmation bubble
+ * is intentionally clickable. */
 
 .at-cursor {
   position: fixed;
@@ -145,6 +146,113 @@ stroke-linejoin='round'/></svg>");
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.at-guide-confirm {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: min(320px, calc(100vw - 24px));
+  z-index: 2147483647;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.97);
+  color: #ffffff;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.38),
+    0 0 0 1px rgba(255, 255, 255, 0.14);
+  font: 500 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  pointer-events: auto;
+}
+
+.at-guide-confirm::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 24px;
+  width: 16px;
+  height: 16px;
+  transform: rotate(45deg);
+  background: rgba(17, 24, 39, 0.97);
+  box-shadow: -1px -1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.at-guide-confirm[data-placement="top"]::before {
+  top: auto;
+  bottom: -8px;
+  box-shadow: 1px 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.at-guide-confirm[data-placement="right"]::before {
+  top: 24px;
+  left: -8px;
+  box-shadow: -1px 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.at-guide-confirm[data-placement="left"]::before {
+  top: 24px;
+  left: auto;
+  right: -8px;
+  box-shadow: 1px -1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.at-guide-confirm__title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.at-guide-confirm__body,
+.at-guide-confirm__tip {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.at-guide-confirm__tip {
+  margin-top: 8px;
+  padding: 8px 9px;
+  border-radius: 7px;
+  background: rgba(99, 102, 241, 0.18);
+  color: #eef2ff;
+}
+
+.at-guide-confirm__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.at-guide-confirm__button {
+  appearance: none;
+  border: 0;
+  border-radius: 7px;
+  min-height: 32px;
+  padding: 0 12px;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.at-guide-confirm__button:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.at-guide-confirm__button:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 2px;
+}
+
+.at-guide-confirm__button--primary {
+  background: #4f46e5;
+}
+
+.at-guide-confirm__button--primary:hover {
+  background: #4338ca;
 }
 
 /* Guide-mode (sticky) variant: brighter accent border + a subtle attention
