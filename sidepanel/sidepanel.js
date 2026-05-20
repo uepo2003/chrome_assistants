@@ -1470,9 +1470,31 @@
     return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
   }
 
-  function onApprovePlan() {
+  async function onApprovePlan() {
     if (!state.plan) return;
-    send(MSG.PLAN_APPROVED, { plan: state.plan });
+    if (state.nodes.planActions) {
+      state.nodes.planActions.querySelectorAll("button").forEach((btn) => {
+        btn.disabled = true;
+      });
+    }
+    const resp = await sendAsync(MSG.PLAN_APPROVED, { plan: state.plan });
+    if (!resp || resp.ok === false) {
+      const error = (resp && (resp.error || resp.reason)) || "unknown_error";
+      appendSystem(
+        error === "no_content_script"
+          ? tr("error.noContentScript")
+          : tr("system.planError", { error })
+      );
+      if (state.nodes.planActions) {
+        state.nodes.planActions.querySelectorAll("button").forEach((btn) => {
+          btn.disabled = false;
+        });
+      }
+      if (dom.liveHeading) dom.liveHeading.textContent = tr("live.aborted.title");
+      if (dom.liveSummary) dom.liveSummary.textContent = tr("live.aborted.body");
+      setRunState("aborted");
+      return;
+    }
     morphPlanForRun();
     appendSystem(tr("system.planApproved"));
     setRunState("running");
@@ -1668,7 +1690,7 @@
             ? tr("system.planErrorDetails", { error: msg.error || "unknown error", details: msg.details })
             : tr("system.planError", { error: msg.error || "unknown error" })
         );
-        setRunState("idle");
+        setRunState(state.runningRecipe ? "aborted" : "idle");
         break;
       }
       case MSG.RUN_STARTED:
@@ -1730,11 +1752,12 @@
       case MSG.RUN_ABORTED:
         state.quickSkipActive = false;
         if (msg.reason === "no_content_script") {
-          // Runtime resilience (spec): friendly localized message + drop
-          // straight back to the catalog instead of a stuck "running" UI.
+          // Keep the live chat visible so the user sees why approval/start
+          // failed. Returning to catalog idle hides #chat in catalog mode.
           appendSystem(tr("error.noContentScript"));
-          setRunState("idle");
-          showCatalog();
+          if (dom.liveHeading) dom.liveHeading.textContent = tr("live.aborted.title");
+          if (dom.liveSummary) dom.liveSummary.textContent = tr("live.aborted.body");
+          setRunState("aborted");
           setTimeout(loadRunHistory, 250);
           break;
         }
