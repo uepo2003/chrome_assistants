@@ -315,6 +315,7 @@
 
       // ----- guide-mode cursor narration -----
       'guide.clickHere': 'Click here',
+      'guide.projectNameHere': 'Click here and enter the project name',
       'guide.typeHere': 'Type here, then continue',
       'guide.typeThis': 'Type this here:',
       'guide.narrate.click': 'Click the highlighted element',
@@ -325,6 +326,7 @@
       'guide.youDidIt': 'Nice — done. Moving on.',
       'guide.confirm.title': 'Done?',
       'guide.confirm.body.click': 'Complete the highlighted action, then choose Yes.',
+      'guide.confirm.body.projectName': 'Click the highlighted field and enter the project name. When the name is visible, choose Yes.',
       'guide.confirm.body.type': 'Fill the highlighted field, then choose Yes.',
       'guide.confirm.yes': 'Yes',
       'guide.confirm.no': 'No',
@@ -332,6 +334,10 @@
       'guide.confirm.tip.click': 'Tip: click or select the highlighted item. If a menu opened, choose the intended option, then press Yes.',
       'guide.confirm.tip.type': 'Tip: type the needed value into the highlighted field. When the value is visible, press Yes.',
       'guide.confirm.tip.generic': 'Tip: finish the highlighted step on the page, then press Yes. The sidepanel Next button also works.',
+      'guide.confirm.needProjectName': 'I do not see a project name yet. Type the project name into the highlighted field, then press Yes.',
+      'guide.confirm.questionPlaceholder': 'What is unclear?',
+      'guide.confirm.ask': 'Ask',
+      'guide.confirm.questionAck': 'Got it. Try the highlighted step again, then press Yes when it is done.',
       'cache.usedCached': 'Used a remembered shortcut',
 
       // ----- errors (new) -----
@@ -692,6 +698,7 @@
 
       // ----- guide-mode cursor narration -----
       'guide.clickHere': 'ここをクリック',
+      'guide.projectNameHere': 'ここをクリックしてプロジェクト名を入力',
       'guide.typeHere': 'ここに入力して進んでください',
       'guide.typeThis': 'ここに入力:',
       'guide.narrate.click': 'ハイライトされた要素をクリック',
@@ -702,6 +709,7 @@
       'guide.youDidIt': 'できました — 次に進みます。',
       'guide.confirm.title': '完了しましたか？',
       'guide.confirm.body.click': 'ハイライトされた操作を完了したら「はい」を押してください。',
+      'guide.confirm.body.projectName': 'ハイライトされた欄をクリックしてプロジェクト名を入力してください。名前が表示されたら「はい」を押してください。',
       'guide.confirm.body.type': 'ハイライトされた入力欄に入力できたら「はい」を押してください。',
       'guide.confirm.yes': 'はい',
       'guide.confirm.no': 'いいえ',
@@ -709,6 +717,10 @@
       'guide.confirm.tip.click': 'ヒント: ハイライトされた項目をクリックまたは選択してください。メニューが開いた場合は目的の候補まで選んでから「はい」です。',
       'guide.confirm.tip.type': 'ヒント: 必要な値をハイライトされた欄に入力してください。値が見えていれば「はい」を押してください。',
       'guide.confirm.tip.generic': 'ヒント: ページ上でハイライトされた操作を終えたら「はい」を押してください。サイドパネルの「次へ」でも進めます。',
+      'guide.confirm.needProjectName': 'まだプロジェクト名が見つかりません。ハイライトされた欄にプロジェクト名を入力してから「はい」を押してください。',
+      'guide.confirm.questionPlaceholder': 'どこがわからないですか？',
+      'guide.confirm.ask': '質問',
+      'guide.confirm.questionAck': '確認しました。もう一度ハイライトの操作をして、完了したら「はい」を押してください。',
       'cache.usedCached': '記憶したショートカットを使いました',
 
       // ----- errors (new) -----
