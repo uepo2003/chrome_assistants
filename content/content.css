@@ -219,8 +219,27 @@ stroke-linejoin='round'/></svg>");
   color: #eef2ff;
 }
 
+.at-guide-confirm__question {
+  width: 100%;
+  min-height: 58px;
+  margin-top: 9px;
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 7px;
+  box-sizing: border-box;
+  resize: vertical;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font: inherit;
+}
+
+.at-guide-confirm__question::placeholder {
+  color: rgba(255, 255, 255, 0.58);
+}
+
 .at-guide-confirm__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 11px;
 }

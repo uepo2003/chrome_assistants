@@ -896,9 +896,12 @@
     var el = opts.el;
     var verb = opts.verb || "click";
     var title = t("guide.confirm.title", "Done?");
-    var body = verb === "type"
-      ? t("guide.confirm.body.type", "Fill the highlighted field, then choose Yes.")
-      : t("guide.confirm.body.click", "Complete the highlighted action, then choose Yes.");
+    var body = stepLooksLikeProjectName()
+      ? t("guide.confirm.body.projectName",
+        "Click the highlighted field and enter the project name. When the name is visible, choose Yes.")
+      : (verb === "type"
+        ? t("guide.confirm.body.type", "Fill the highlighted field, then choose Yes.")
+        : t("guide.confirm.body.click", "Complete the highlighted action, then choose Yes."));
 
     var bubble = document.createElement("div");
     bubble.className = "at-guide-confirm";
@@ -917,6 +920,11 @@
     tipEl.className = "at-guide-confirm__tip";
     tipEl.hidden = true;
 
+    var questionEl = document.createElement("textarea");
+    questionEl.className = "at-guide-confirm__question";
+    questionEl.placeholder = t("guide.confirm.questionPlaceholder", "What is unclear?");
+    questionEl.hidden = true;
+
     var actions = document.createElement("div");
     actions.className = "at-guide-confirm__actions";
 
@@ -930,6 +938,12 @@
     no.className = "at-guide-confirm__button";
     no.textContent = t("guide.confirm.no", "No");
 
+    var ask = document.createElement("button");
+    ask.type = "button";
+    ask.className = "at-guide-confirm__button";
+    ask.textContent = t("guide.confirm.ask", "Ask");
+    ask.hidden = true;
+
     ["mousedown", "mouseup", "click"].forEach(function (name) {
       bubble.addEventListener(name, function (ev) {
         ev.stopPropagation();
@@ -937,21 +951,51 @@
     });
     yes.addEventListener("click", function (ev) {
       stopBubbleEvent(ev);
-      if (typeof opts.onYes === "function") opts.onYes();
+      var check = verifyGuideCompletion(verb, el);
+      if (!check || check.ok !== false) {
+        if (typeof opts.onYes === "function") opts.onYes();
+        return;
+      }
+      bodyEl.textContent = check.message || guideTipFor(verb);
+      tipEl.textContent = guideTipFor(verb);
+      tipEl.hidden = false;
+      questionEl.hidden = false;
+      ask.hidden = false;
+      positionGuideConfirmBubble(el, bubble);
+      if (typeof opts.onNo === "function") opts.onNo(check.message || "");
     });
     no.addEventListener("click", function (ev) {
       stopBubbleEvent(ev);
       tipEl.textContent = guideTipFor(verb);
       tipEl.hidden = false;
+      questionEl.hidden = false;
+      ask.hidden = false;
       positionGuideConfirmBubble(el, bubble);
-      if (typeof opts.onNo === "function") opts.onNo();
+      if (typeof opts.onNo === "function") opts.onNo("");
+    });
+    ask.addEventListener("click", function (ev) {
+      stopBubbleEvent(ev);
+      var question = collapseWS(questionEl.value || "");
+      if (question) {
+        sendStepProgress({
+          narration: question,
+          action: "guide_question",
+          detail: opts && opts.detail ? opts.detail : "",
+        });
+      }
+      tipEl.textContent = t("guide.confirm.questionAck",
+        "Got it. Try the highlighted step again, then press Yes when it is done.");
+      tipEl.hidden = false;
+      positionGuideConfirmBubble(el, bubble);
     });
 
     actions.appendChild(yes);
     actions.appendChild(no);
+    actions.appendChild(ask);
     bubble.appendChild(titleEl);
     bubble.appendChild(bodyEl);
     bubble.appendChild(tipEl);
+    bubble.appendChild(questionEl);
     bubble.appendChild(actions);
 
     var parent = document.body || document.documentElement;
@@ -977,6 +1021,74 @@
     if (!guideConfirmBubble || !guideConfirmBubble.bodyEl) return;
     guideConfirmBubble.bodyEl.textContent = text;
     try { guideConfirmBubble.reposition(); } catch (e) {}
+  }
+
+  function elementValue(el) {
+    if (!el) return "";
+    var tag = (el.tagName || "").toLowerCase();
+    try {
+      if (tag === "input" || tag === "textarea" || tag === "select") {
+        return String(el.value || "").trim();
+      }
+      if (el.isContentEditable) {
+        return collapseWS(el.textContent || "");
+      }
+    } catch (e) {}
+    return "";
+  }
+
+  function editableCandidatesNear(el) {
+    var out = [];
+    function add(node) {
+      if (!node || out.indexOf(node) !== -1) return;
+      out.push(node);
+    }
+    try {
+      if (el && el.matches && el.matches('input:not([type="hidden"]), textarea, select, [contenteditable="true"], [contenteditable=""]')) {
+        add(el);
+      }
+      if (el && el.querySelectorAll) {
+        var inside = el.querySelectorAll('input:not([type="hidden"]), textarea, select, [contenteditable="true"], [contenteditable=""]');
+        for (var i = 0; i < inside.length; i++) add(inside[i]);
+      }
+      var active = document.activeElement;
+      if (active && active.matches && active.matches('input:not([type="hidden"]), textarea, select, [contenteditable="true"], [contenteditable=""]')) {
+        add(active);
+      }
+      var all = document.querySelectorAll('input:not([type="hidden"]), textarea, select, [contenteditable="true"], [contenteditable=""]');
+      for (var j = 0; j < all.length; j++) add(all[j]);
+    } catch (e) {}
+    return out;
+  }
+
+  function stepLooksLikeProjectName() {
+    var s = normalizedCurrentStepText();
+    return s.indexOf("project name") !== -1 ||
+      s.indexOf("プロジェクト名") !== -1;
+  }
+
+  function hasNonSensitiveValueNear(el) {
+    var candidates = editableCandidatesNear(el);
+    for (var i = 0; i < candidates.length; i++) {
+      var c = candidates[i];
+      var type = "";
+      try { type = String((c.getAttribute && c.getAttribute("type")) || "").toLowerCase(); } catch (e) {}
+      if (type === "password") continue;
+      if (elementValue(c)) return true;
+    }
+    return false;
+  }
+
+  function verifyGuideCompletion(verb, el) {
+    if (stepLooksLikeProjectName() && !hasNonSensitiveValueNear(el)) {
+      return {
+        ok: false,
+        message: t("guide.confirm.needProjectName",
+          "I do not see a project name yet. Type the project name into the highlighted field, then press Yes."),
+      };
+    }
+    void verb;
+    return { ok: true };
   }
 
   // Returns Promise<'did-it' | 'aborted'>. Resolves 'did-it' when the user
@@ -1132,6 +1244,8 @@
         ? t("guide.typeThis", "Type this here:") + " " + capStr(suggestText, 60)
         : t("guide.typeHere", "Type here, then continue");
       label = hint;
+    } else if (stepLooksLikeProjectName()) {
+      label = t("guide.projectNameHere", "Click here and enter the project name");
     } else {
       label = t("guide.clickHere", "Click here");
     }
@@ -1170,6 +1284,27 @@
     }
     var p = pendingGuide;
     try { if (typeof p.resolve === "function") p.resolve(); } catch (e) {}
+  }
+
+  function finishGuideStep(normalized, targetEl, detail, successSummary) {
+    rememberSelector(normalized, targetEl);
+    lastAction = {
+      verb: normalized.verb,
+      targetId: normalized.targetId || null,
+      text: typeof normalized.text === "string" ? normalized.text : null,
+      detail: detail || "",
+    };
+    var summary = successSummary || detail || normalized.reason || t("guide.youDidIt", "Nice — done. Moving on.");
+    sendStepProgress({
+      narration: t("guide.youDidIt", "Nice — done. Moving on."),
+      action: normalized.verb,
+      detail: detail,
+    });
+    sendStepDone({
+      success: true,
+      summary: summary,
+    });
+    return "done";
   }
 
   // Handle one AI step-action. Returns a Promise resolving to a string:
@@ -1365,22 +1500,7 @@
           });
         }).then(function (outcome) {
           if (outcome === "aborted") return "aborted";
-          // The user did it (or pressed Yes/Next). Remember the selector so a
-          // future AUTO run of this step can skip the LLM, and anchor the
-          // next AI iteration.
-          rememberSelector(normalized, resolvedEl);
-          lastAction = {
-            verb: normalized.verb,
-            targetId: normalized.targetId || null,
-            text: typeof normalized.text === "string" ? normalized.text : null,
-            detail: detail || "",
-          };
-          sendStepProgress({
-            narration: t("guide.youDidIt", "Nice — done. Moving on."),
-            action: normalized.verb,
-            detail: detail,
-          });
-          return "continue";
+          return finishGuideStep(normalized, resolvedEl, detail);
         });
       }
 
@@ -1565,6 +1685,7 @@
             var profC = speedProfile();
             return sleep((profC.betweenMs | 0) + (profC.settleMs | 0)).then(iter);
           }
+          if (cres === "hit-done") return "cached_guide_done";
           if (cres === "aborted") return "aborted";
           if (cres === "stopped") return "stopped";
           // 'miss' — fall through to the LLM exactly as before.
@@ -1621,13 +1742,17 @@
             }).then(function (outcome) {
               if (outcome === "aborted") return "aborted";
               domCache.hit(recipeId, stepId, intent);
-              lastAction = { verb: verb, targetId: null, text: null, detail: detail };
               sendStepProgress({
                 narration: t("guide.youDidIt", "Nice — done. Moving on."),
                 action: verb,
                 detail: detail,
               });
-              return "hit-continue";
+              sendStepDone({
+                success: true,
+                summary: detail || t("guide.youDidIt", "Nice — done. Moving on."),
+              });
+              lastAction = { verb: verb, targetId: null, text: null, detail: detail };
+              return "hit-done";
             });
           }
 
@@ -1716,6 +1841,7 @@
     }
     // 'ai_done' and 'navigated' already emitted STEP_DONE in handleStepAction.
     // 'recipe_step_done' already emitted STEP_DONE in runStepLoop.
+    // 'cached_guide_done' already emitted STEP_DONE in tryCachedStep().
     // 'stopped'/'aborted' are handled by USER_STOP (RUN_ABORTED was sent).
 
     // Reset per-step bookkeeping. Keep cursor mounted — the next STEP_START
