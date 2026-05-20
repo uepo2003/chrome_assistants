@@ -231,6 +231,47 @@
     }
   }
 
+  function clearEditableValue(el) {
+    var tag = (el.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea") {
+      var proto = (tag === "textarea")
+        ? window.HTMLTextAreaElement && window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement && window.HTMLInputElement.prototype;
+      var desc = proto && Object.getOwnPropertyDescriptor(proto, "value");
+      var setter = desc && desc.set;
+      if (setter) {
+        try { setter.call(el, ""); }
+        catch (e) { try { el.value = ""; } catch (e2) {} }
+      } else {
+        try { el.value = ""; } catch (e) {}
+      }
+      try {
+        el.dispatchEvent(new InputEvent("input", {
+          bubbles: true,
+          cancelable: false,
+          inputType: "deleteContentBackward",
+          data: null,
+        }));
+      } catch (e) {
+        try { el.dispatchEvent(new Event("input", { bubbles: true })); } catch (e2) {}
+      }
+      return;
+    }
+    if (isContentEditable(el)) {
+      try { el.textContent = ""; } catch (e) {}
+      try {
+        el.dispatchEvent(new InputEvent("input", {
+          bubbles: true,
+          cancelable: false,
+          inputType: "deleteContentBackward",
+          data: null,
+        }));
+      } catch (e2) {
+        try { el.dispatchEvent(new Event("input", { bubbles: true })); } catch (e3) {}
+      }
+    }
+  }
+
   function dispatchChange(el) {
     try { el.dispatchEvent(new Event("change", { bubbles: true })); } catch (e) {}
   }
@@ -258,6 +299,7 @@
       .then(function () {
         if (!el || !el.isConnected) return;
         focusEl(el);
+        if (!opts.append) clearEditableValue(el);
       })
       .then(function () {
         if (!el || !el.isConnected) return;

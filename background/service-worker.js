@@ -790,8 +790,8 @@ function abortRunNoContentScript(tabId) {
  */
 async function safeSendToTab(tabId, message) {
   try {
-    await chrome.tabs.sendMessage(tabId, message);
-    return { ok: true };
+    const response = await chrome.tabs.sendMessage(tabId, message);
+    return { ok: true, response };
   } catch (err) {
     if (isNoContentScriptError(err)) {
       abortRunNoContentScript(tabId);
@@ -1625,10 +1625,34 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Only flip back to running if we were actually paused on a handoff.
         if (run.status === 'waiting-user') run.status = 'running';
         await persistRunCheckpoint(tabId);
-        await safeSendToTab(tabId, {
+        const resumeResult = await safeSendToTab(tabId, {
           type: MSG.RESUME,
           tabId,
         });
+        if (
+          run.status === 'running' &&
+          Array.isArray(run.plan) &&
+          run.plan.length > 0 &&
+          run.currentStepIndex < run.plan.length &&
+          resumeResult.ok &&
+          !(resumeResult.response && resumeResult.response.resumed === true)
+        ) {
+          const stepIndex = run.currentStepIndex;
+          const totalSteps = run.plan.length;
+          const step = run.plan[stepIndex];
+          setTimeout(() => {
+            if (run.status !== 'running' || run.currentStepIndex !== stepIndex) return;
+            safeSendToTab(tabId, {
+              type: MSG.STEP_START,
+              tabId,
+              stepIndex,
+              totalSteps,
+              step,
+              reason: 'resume_reissue',
+              recipe: recipeStepPayload(run),
+            }).catch(() => {});
+          }, 250);
+        }
         sendResponse({ ok: true });
       })();
       return true;

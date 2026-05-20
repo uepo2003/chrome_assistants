@@ -85,6 +85,7 @@
   // Resolver for an in-flight guide-mode wait (user is doing the action, or
   // pressing "Next" in the sidepanel). Cleared on stop/abort.
   var pendingGuide = null;       // { resolve, cleanup } | null
+  var guideConfirmBubble = null;  // page-level "Done? Yes/No" bubble
 
   // ----- recipe context (Section 5) ---------------------------------------
   // `currentRecipe` rides on every STEP_START when the Run is recipe-driven.
@@ -530,6 +531,11 @@
           return "done";
         }
 
+        if (act.verb === "skip" && !act.targetId) {
+          dbg("loop: skip without target", act.source, act.reason);
+          return "done";
+        }
+
         return dispatchAction(act).then(function (result) {
           if (shouldStop()) return "stopped";
           if (!result || !result.executed) {
@@ -814,12 +820,172 @@
     return fallback;
   }
 
+  function stopBubbleEvent(ev) {
+    try {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (typeof ev.stopImmediatePropagation === "function") ev.stopImmediatePropagation();
+    } catch (e) {}
+  }
+
+  function removeGuideConfirmBubble() {
+    if (!guideConfirmBubble) return;
+    var b = guideConfirmBubble;
+    guideConfirmBubble = null;
+    try {
+      window.removeEventListener("resize", b.reposition, true);
+      window.removeEventListener("scroll", b.reposition, true);
+    } catch (e) {}
+    try {
+      if (b.el && b.el.parentNode) b.el.parentNode.removeChild(b.el);
+    } catch (e2) {}
+  }
+
+  function guideTipFor(verb) {
+    if (verb === "type") {
+      return t("guide.confirm.tip.type",
+        "Tip: type the needed value into the highlighted field. When the value is visible, press Yes.");
+    }
+    if (verb === "click" || verb === "skip") {
+      return t("guide.confirm.tip.click",
+        "Tip: click or select the highlighted item. If a menu opened, choose the intended option, then press Yes.");
+    }
+    return t("guide.confirm.tip.generic",
+      "Tip: finish the highlighted step on the page, then press Yes. The sidepanel Next button also works.");
+  }
+
+  function positionGuideConfirmBubble(el, bubble) {
+    if (!bubble || !el || !el.getBoundingClientRect) return;
+    var rect;
+    try { rect = el.getBoundingClientRect(); } catch (e) { rect = null; }
+    if (!rect) return;
+    var margin = 12;
+    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    var bw = bubble.offsetWidth || 320;
+    var bh = bubble.offsetHeight || 120;
+    var left;
+    var top;
+    var placement;
+    if (rect.right + margin + bw <= vw - margin) {
+      placement = "right";
+      left = rect.right + margin;
+      top = rect.top + rect.height / 2 - bh / 2;
+    } else if (rect.left - margin - bw >= margin) {
+      placement = "left";
+      left = rect.left - bw - margin;
+      top = rect.top + rect.height / 2 - bh / 2;
+    } else {
+      placement = "bottom";
+      left = rect.left + Math.min(Math.max(rect.width / 2 - 28, 0), Math.max(rect.width - 56, 0));
+      top = rect.bottom + margin;
+      if (top + bh > vh - margin && rect.top - bh - margin > margin) {
+        top = rect.top - bh - margin;
+        placement = "top";
+      }
+    }
+    left = Math.max(margin, Math.min(left, Math.max(margin, vw - bw - margin)));
+    top = Math.max(margin, Math.min(top, Math.max(margin, vh - bh - margin)));
+    bubble.style.transform = "translate3d(" + Math.round(left) + "px, " + Math.round(top) + "px, 0)";
+    bubble.setAttribute("data-placement", placement);
+  }
+
+  function showGuideConfirmBubble(opts) {
+    opts = opts || {};
+    removeGuideConfirmBubble();
+    var el = opts.el;
+    var verb = opts.verb || "click";
+    var title = t("guide.confirm.title", "Done?");
+    var body = verb === "type"
+      ? t("guide.confirm.body.type", "Fill the highlighted field, then choose Yes.")
+      : t("guide.confirm.body.click", "Complete the highlighted action, then choose Yes.");
+
+    var bubble = document.createElement("div");
+    bubble.className = "at-guide-confirm";
+    bubble.setAttribute("role", "dialog");
+    bubble.setAttribute("aria-label", title);
+
+    var titleEl = document.createElement("p");
+    titleEl.className = "at-guide-confirm__title";
+    titleEl.textContent = title;
+
+    var bodyEl = document.createElement("p");
+    bodyEl.className = "at-guide-confirm__body";
+    bodyEl.textContent = body;
+
+    var tipEl = document.createElement("p");
+    tipEl.className = "at-guide-confirm__tip";
+    tipEl.hidden = true;
+
+    var actions = document.createElement("div");
+    actions.className = "at-guide-confirm__actions";
+
+    var yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "at-guide-confirm__button at-guide-confirm__button--primary";
+    yes.textContent = t("guide.confirm.yes", "Yes");
+
+    var no = document.createElement("button");
+    no.type = "button";
+    no.className = "at-guide-confirm__button";
+    no.textContent = t("guide.confirm.no", "No");
+
+    ["mousedown", "mouseup", "click"].forEach(function (name) {
+      bubble.addEventListener(name, function (ev) {
+        ev.stopPropagation();
+      }, true);
+    });
+    yes.addEventListener("click", function (ev) {
+      stopBubbleEvent(ev);
+      if (typeof opts.onYes === "function") opts.onYes();
+    });
+    no.addEventListener("click", function (ev) {
+      stopBubbleEvent(ev);
+      tipEl.textContent = guideTipFor(verb);
+      tipEl.hidden = false;
+      positionGuideConfirmBubble(el, bubble);
+      if (typeof opts.onNo === "function") opts.onNo();
+    });
+
+    actions.appendChild(yes);
+    actions.appendChild(no);
+    bubble.appendChild(titleEl);
+    bubble.appendChild(bodyEl);
+    bubble.appendChild(tipEl);
+    bubble.appendChild(actions);
+
+    var parent = document.body || document.documentElement;
+    if (!parent) return null;
+    parent.appendChild(bubble);
+
+    var reposition = function () { positionGuideConfirmBubble(el, bubble); };
+    guideConfirmBubble = {
+      el: bubble,
+      bodyEl: bodyEl,
+      tipEl: tipEl,
+      reposition: reposition,
+    };
+    reposition();
+    try {
+      window.addEventListener("resize", reposition, true);
+      window.addEventListener("scroll", reposition, true);
+    } catch (e) {}
+    return guideConfirmBubble;
+  }
+
+  function setGuideConfirmBody(text) {
+    if (!guideConfirmBubble || !guideConfirmBubble.bodyEl) return;
+    guideConfirmBubble.bodyEl.textContent = text;
+    try { guideConfirmBubble.reposition(); } catch (e) {}
+  }
+
   // Returns Promise<'did-it' | 'aborted'>. Resolves 'did-it' when the user
   // performed the action (or pressed Next); 'aborted' on stop/supersede.
-  function waitForUserAction(verb, el, myGeneration) {
+  function waitForUserAction(verb, el, myGeneration, opts) {
     return new Promise(function (resolve) {
       var settled = false;
       var timer = 0;
+      var stopPoll = 0;
       var reNarrated = false;
 
       function stopped() {
@@ -831,6 +997,8 @@
 
       function cleanup() {
         if (timer) { clearTimeout(timer); timer = 0; }
+        if (stopPoll) { clearInterval(stopPoll); stopPoll = 0; }
+        removeGuideConfirmBubble();
         try {
           if (el && el.removeEventListener) {
             el.removeEventListener("click", onTargetClick, true);
@@ -867,17 +1035,36 @@
           (node.contains && node.contains(el));
       }
 
-      function onTargetClick() { finish("did-it"); }
-      function onDocClick(ev) {
-        if (targetHit(ev && ev.target)) finish("did-it");
+      function markTargetTouched() {
+        setGuideConfirmBody(t("guide.confirm.afterAction",
+          "Looks like you interacted with the target. Choose Yes if it is complete."));
       }
-      function onFieldInput() { finish("did-it"); }
+      function onTargetClick() { markTargetTouched(); }
+      function onDocClick(ev) {
+        if (targetHit(ev && ev.target)) markTargetTouched();
+      }
+      function onFieldInput() { markTargetTouched(); }
 
-      // The sidepanel "Next" button resolves through here.
+      // The page bubble "Yes" and sidepanel "Next" both resolve through here.
       pendingGuide = {
         resolve: function () { finish("did-it"); },
         cleanup: cleanup,
       };
+
+      showGuideConfirmBubble({
+        el: el,
+        verb: verb,
+        detail: opts && opts.detail,
+        onYes: function () { finish("did-it"); },
+        onNo: function () {
+          sendStepProgress({
+            narration: guideTipFor(verb),
+            action: "guide_hint",
+            detail: opts && opts.detail ? opts.detail : "",
+          });
+          pointCursorAt(el, verb, opts && opts.suggestText);
+        },
+      });
 
       try {
         if (el && el.addEventListener) {
@@ -909,7 +1096,7 @@
               detail: "",
             });
             // Re-assert the cursor/ring in case the page repainted.
-            pointCursorAt(el, verb);
+            pointCursorAt(el, verb, opts && opts.suggestText);
             arm(GUIDE_TIMEOUT_MS);
           } else {
             // Don't silently proceed: hand control to the sidepanel Next.
@@ -927,7 +1114,7 @@
 
       // Poll stop flags cheaply (USER_STOP clears pendingGuide via
       // clearPendingGuide(), which also rejects — but guard anyway).
-      var stopPoll = setInterval(function () {
+      stopPoll = setInterval(function () {
         if (settled) { clearInterval(stopPoll); return; }
         if (stopped()) { clearInterval(stopPoll); finish("aborted"); }
       }, 500);
@@ -1001,6 +1188,19 @@
       sendStepDone({
         success: true,
         summary: typeof action.reason === "string" ? action.reason : "",
+      });
+      return Promise.resolve("done");
+    }
+
+    if (verb === "skip") {
+      sendStepProgress({
+        narration: typeof action.reason === "string" ? action.reason : "Skipping this step",
+        action: "skip",
+        detail: "",
+      });
+      sendStepDone({
+        success: false,
+        summary: typeof action.reason === "string" ? action.reason : "Skipped",
       });
       return Promise.resolve("done");
     }
@@ -1102,7 +1302,7 @@
       });
     }
 
-    if (verb === "click" || verb === "type" || verb === "scroll" || verb === "skip") {
+    if (verb === "click" || verb === "type" || verb === "scroll") {
       var normalized = normalizeAiAction(action);
       if (!normalized) return Promise.resolve("noop");
       // Capture detail BEFORE click — element may be removed after the click.
@@ -1159,10 +1359,13 @@
             action: "guide_wait",
             detail: detail,
           });
-          return waitForUserAction(normalized.verb, resolvedEl, myGen);
+          return waitForUserAction(normalized.verb, resolvedEl, myGen, {
+            detail: detail,
+            suggestText: normalized.verb === "type" ? normalized.text : "",
+          });
         }).then(function (outcome) {
           if (outcome === "aborted") return "aborted";
-          // The user did it (or pressed Next). Remember the selector so a
+          // The user did it (or pressed Yes/Next). Remember the selector so a
           // future AUTO run of this step can skip the LLM, and anchor the
           // next AI iteration.
           rememberSelector(normalized, resolvedEl);
@@ -1289,6 +1492,22 @@
         return Promise.resolve("snapshot_failed");
       }
 
+      if (currentRecipe) {
+        var recipeStepDone = detectRecipeStepCompletion(snapshot);
+        if (recipeStepDone) {
+          sendStepProgress({
+            narration: recipeStepDone.narration || "Step already complete",
+            action: "recipe_step_done",
+            detail: recipeStepDone.detail || "",
+          });
+          sendStepDone({
+            success: true,
+            summary: recipeStepDone.summary || recipeStepDone.narration || "Step complete",
+          });
+          return Promise.resolve("recipe_step_done");
+        }
+      }
+
       // Rule fast-path (modes that include rules). 'done' from rules means
       // the tutorial overlay closed — strong signal the step succeeded.
       var ruleAction = null;
@@ -1359,6 +1578,11 @@
     // use. Resolves to: 'hit-continue' (acted/guided OK), 'miss', 'aborted',
     // or 'stopped'. Never throws.
     function tryCachedStep(domCache, myGeneration) {
+      // Cache is only a first-action shortcut. Once this step has already
+      // clicked/typed something, let the DOM+AI decide whether the page moved
+      // forward instead of blindly replaying the same remembered selector.
+      if (lastAction && lastAction.verb) return Promise.resolve("miss");
+
       var stepId = currentStep.step.id;
       var recipeId = cacheRecipeId();
       var verbs = ["click", "skip", "type"];
@@ -1390,7 +1614,10 @@
               detail: detail,
             });
             return pointCursorAt(el, verb, "").then(function () {
-              return waitForUserAction(verb, el, myGeneration);
+              return waitForUserAction(verb, el, myGeneration, {
+                detail: detail,
+                suggestText: "",
+              });
             }).then(function (outcome) {
               if (outcome === "aborted") return "aborted";
               domCache.hit(recipeId, stepId, intent);
@@ -1488,6 +1715,7 @@
       });
     }
     // 'ai_done' and 'navigated' already emitted STEP_DONE in handleStepAction.
+    // 'recipe_step_done' already emitted STEP_DONE in runStepLoop.
     // 'stopped'/'aborted' are handled by USER_STOP (RUN_ABORTED was sent).
 
     // Reset per-step bookkeeping. Keep cursor mounted — the next STEP_START
@@ -1785,6 +2013,26 @@
              hay.indexOf("メールを確認") !== -1;
     },
 
+    "sign-in": function (ctx) {
+      var u = (ctx.url || "").toLowerCase();
+      var hay = (ctx.text || "").toLowerCase();
+      var authUrl = /\/(sign-?in|login|auth)(\/|$|\?)/.test(u);
+      var authText =
+        hay.indexOf("sign in") !== -1 ||
+        hay.indexOf("log in") !== -1 ||
+        hay.indexOf("login") !== -1 ||
+        hay.indexOf("ログイン") !== -1 ||
+        hay.indexOf("サインイン") !== -1;
+      if (!authUrl && !authText) return false;
+      try {
+        return !!document.querySelector(
+          'input[type="password"], input[name*="password" i], input[autocomplete="current-password"]'
+        );
+      } catch (e) {
+        return false;
+      }
+    },
+
     "paste-public-key": function (ctx) {
       // Best-effort: page mentions "public key" / "SSH key" / "公開鍵" AND a
       // textarea/input for pasting is on the page.
@@ -1799,6 +2047,8 @@
     },
 
     "pick-password": function (ctx) {
+      var u = (ctx.url || "").toLowerCase();
+      if (/\/(sign-?in|login|auth)(\/|$|\?)/.test(u)) return false;
       var hay = (ctx.text || "").toLowerCase();
       // "Create a password" / "Choose a password" / "パスワード"
       if (hay.indexOf("create a password") === -1 &&
@@ -1910,6 +2160,99 @@
     };
   }
 
+  function detectRecipeStepCompletion(snapshot) {
+    if (!currentRecipe || !currentStep || !currentStep.step) return null;
+    if (currentRecipe.id === "supabase-create-project") {
+      return detectSupabaseStepCompletion(snapshot);
+    }
+    return null;
+  }
+
+  function normalizedCurrentStepText() {
+    var step = currentStep && currentStep.step ? currentStep.step : {};
+    return collapseWS([
+      step.id || "",
+      step.title || "",
+      step.description || "",
+      step.expectedOutcome || "",
+    ].join(" ")).toLowerCase();
+  }
+
+  function snapshotLabelText(snapshot) {
+    var items = snapshot && Array.isArray(snapshot.interactives)
+      ? snapshot.interactives
+      : [];
+    var parts = [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i] || {};
+      parts.push(it.text || "");
+      parts.push(it.ariaLabel || "");
+      parts.push(it.placeholder || "");
+      parts.push(it.name || "");
+      parts.push(it.title || "");
+      parts.push(it.role || "");
+      parts.push(it.type || "");
+    }
+    return collapseWS(parts.join(" ")).toLowerCase();
+  }
+
+  function currentUrlLower() {
+    try { return String(location.href || "").toLowerCase(); }
+    catch (e) { return ""; }
+  }
+
+  function supabaseProjectFormVisible(snapshot) {
+    var url = currentUrlLower();
+    var text = (getPageTextSnapshot() + " " + snapshotLabelText(snapshot)).toLowerCase();
+    if (/supabase\.com\/dashboard\/new\/[^/?#]+/.test(url)) return true;
+    var hasProjectName =
+      text.indexOf("project name") !== -1 ||
+      text.indexOf("name your project") !== -1 ||
+      text.indexOf("プロジェクト名") !== -1;
+    var hasDbPassword =
+      text.indexOf("database password") !== -1 ||
+      text.indexOf("db password") !== -1 ||
+      text.indexOf("データベースパスワード") !== -1 ||
+      text.indexOf("パスワード") !== -1;
+    var hasRegion =
+      text.indexOf("region") !== -1 ||
+      text.indexOf("リージョン") !== -1 ||
+      text.indexOf("地域") !== -1;
+    return hasProjectName && (hasDbPassword || hasRegion);
+  }
+
+  function detectSupabaseStepCompletion(snapshot) {
+    var stepText = normalizedCurrentStepText();
+    var url = currentUrlLower();
+    var formVisible = supabaseProjectFormVisible(snapshot);
+
+    var isNewProjectStep =
+      stepText.indexOf("new project") !== -1 ||
+      stepText.indexOf("新規プロジェクト") !== -1 ||
+      stepText.indexOf("プロジェクト作成ボタン") !== -1;
+    if (isNewProjectStep && formVisible) {
+      return {
+        narration: "プロジェクト作成フォームに移動済みです",
+        detail: url,
+        summary: "Project creation form opened",
+      };
+    }
+
+    var isOrgStep =
+      stepText.indexOf("pick org") !== -1 ||
+      stepText.indexOf("organization") !== -1 ||
+      stepText.indexOf("組織") !== -1;
+    if (isOrgStep && formVisible && /supabase\.com\/dashboard\/new\/[^/?#]+/.test(url)) {
+      return {
+        narration: "作成先の組織は URL 上で選択済みです",
+        detail: url,
+        summary: "Organization selected",
+      };
+    }
+
+    return null;
+  }
+
   // Evaluate the recipe's humanHandoffPoints against the current page. If a
   // declared `when` matches AND we have not already paused for it in this
   // step, return the matching handoff point; otherwise return null.
@@ -1922,6 +2265,7 @@
       var hp = currentRecipe.humanHandoffPoints[i];
       if (!hp || typeof hp.when !== "string") continue;
       if (triggeredHandoffsThisStep.has(hp.when)) continue;
+      if (!isHandoffRelevantToCurrentStep(hp)) continue;
       var matcher = RECIPE_HANDOFF_MATCHERS[hp.when];
       if (typeof matcher !== "function") continue;
       try {
@@ -1931,6 +2275,15 @@
       }
     }
     return null;
+  }
+
+  function isHandoffRelevantToCurrentStep(hp) {
+    if (!hp || typeof hp.when !== "string") return false;
+    if (!currentRecipe || currentRecipe.id !== "supabase-create-project") return true;
+    if (hp.when !== "pick-password") return true;
+    var stepText = normalizedCurrentStepText();
+    return stepText.indexOf("password") !== -1 ||
+      stepText.indexOf("パスワード") !== -1;
   }
 
   // Pause the step loop and wait for a RESUME message. Resolves once RESUME
@@ -1963,7 +2316,7 @@
   function handleResume() {
     if (!pendingResume) {
       dbg("RESUME: no pending pause");
-      return;
+      return false;
     }
     var p = pendingResume;
     pendingResume = null;
@@ -1973,6 +2326,7 @@
       action: "resume",
       detail: "",
     });
+    return true;
   }
 
   // Evaluate the recipe's successCriteria against current URL + page text.
@@ -2168,8 +2522,8 @@
           return false;
         }
         case MSG.RESUME: {
-          handleResume();
-          sendResponse({ ok: true });
+          var resumed = handleResume();
+          sendResponse({ ok: true, resumed: resumed });
           return false;
         }
         case MSG.GUIDE_ADVANCE: {
