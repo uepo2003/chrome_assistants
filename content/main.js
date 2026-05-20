@@ -1644,7 +1644,10 @@
       }
 
       if (ruleAction && ruleAction.verb === "done") {
-        return Promise.resolve("rule_done");
+        if (shouldAcceptRuleDoneForCurrentStep(snapshot)) {
+          return Promise.resolve("rule_done");
+        }
+        ruleAction = null;
       }
       if (ruleAction && (ruleAction.verb === "click" || ruleAction.verb === "scroll")) {
         var ruleDetail = describeActionDetail(ruleAction);
@@ -2304,6 +2307,31 @@
     ].join(" ")).toLowerCase();
   }
 
+  function shouldAcceptRuleDoneForCurrentStep(snapshot) {
+    var stepText = normalizedCurrentStepText();
+    if (!stepText) return false;
+
+    var overlayLikeStep =
+      stepText.indexOf("overlay") !== -1 ||
+      stepText.indexOf("tutorial") !== -1 ||
+      stepText.indexOf("tour") !== -1 ||
+      stepText.indexOf("onboarding") !== -1 ||
+      stepText.indexOf("coachmark") !== -1 ||
+      stepText.indexOf("walkthrough") !== -1 ||
+      stepText.indexOf("dismiss") !== -1 ||
+      stepText.indexOf("close") !== -1 ||
+      stepText.indexOf("skip") !== -1 ||
+      stepText.indexOf("オーバーレイ") !== -1 ||
+      stepText.indexOf("チュートリアル") !== -1 ||
+      stepText.indexOf("ツアー") !== -1 ||
+      stepText.indexOf("案内") !== -1 ||
+      stepText.indexOf("閉じ") !== -1 ||
+      stepText.indexOf("スキップ") !== -1;
+
+    if (!overlayLikeStep) return false;
+    return !(snapshot && snapshot.overlayPresent);
+  }
+
   function snapshotLabelText(snapshot) {
     var items = snapshot && Array.isArray(snapshot.interactives)
       ? snapshot.interactives
@@ -2352,20 +2380,10 @@
     var url = currentUrlLower();
     var formVisible = supabaseProjectFormVisible(snapshot);
 
-    var isNewProjectStep =
-      stepText.indexOf("new project") !== -1 ||
-      stepText.indexOf("新規プロジェクト") !== -1 ||
-      stepText.indexOf("プロジェクト作成ボタン") !== -1;
-    if (isNewProjectStep && formVisible) {
-      return {
-        narration: "プロジェクト作成フォームに移動済みです",
-        detail: url,
-        summary: "Project creation form opened",
-      };
-    }
-
     var isOrgStep =
       stepText.indexOf("pick org") !== -1 ||
+      stepText.indexOf("select org") !== -1 ||
+      stepText.indexOf("choose org") !== -1 ||
       stepText.indexOf("organization") !== -1 ||
       stepText.indexOf("組織") !== -1;
     if (isOrgStep && formVisible && /supabase\.com\/dashboard\/new\/[^/?#]+/.test(url)) {
@@ -2373,6 +2391,30 @@
         narration: "作成先の組織は URL 上で選択済みです",
         detail: url,
         summary: "Organization selected",
+      };
+    }
+
+    var opensDashboard =
+      stepText.indexOf("open supabase.com/dashboard") !== -1 ||
+      stepText.indexOf("navigate to supabase.com/dashboard") !== -1 ||
+      stepText.indexOf("go to supabase.com/dashboard") !== -1 ||
+      stepText.indexOf("supabase.com/dashboard を開") !== -1;
+    var isCreateSubmissionStep =
+      stepText.indexOf("create project button") !== -1 ||
+      stepText.indexOf("create new project") !== -1 ||
+      stepText.indexOf("initiate project provisioning") !== -1 ||
+      stepText.indexOf("project provisioning") !== -1 ||
+      stepText.indexOf("プロジェクト作成ボタン") !== -1 ||
+      stepText.indexOf("プロビジョニング") !== -1;
+    var clicksNewProject = !isCreateSubmissionStep && (
+      /\b(click|press|select|choose)\b[^.]{0,80}\bnew project\b/.test(stepText) ||
+      /新規プロジェクト[^。]{0,40}(クリック|押|選択)/.test(stepText)
+    );
+    if ((opensDashboard || clicksNewProject) && formVisible) {
+      return {
+        narration: "プロジェクト作成フォームに移動済みです",
+        detail: url,
+        summary: "Project creation form opened",
       };
     }
 
