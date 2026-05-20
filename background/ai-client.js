@@ -28,6 +28,13 @@ const ENDPOINTS = {
   // Gemini endpoint is dynamic: built per-call with model + key in URL.
 };
 
+const PROVIDER_KEY_STORAGE = {
+  gemini: STORAGE_KEYS.API_KEY_GEMINI,
+  deepseek: STORAGE_KEYS.API_KEY_DEEPSEEK,
+  anthropic: STORAGE_KEYS.API_KEY,
+  openai: STORAGE_KEYS.API_KEY_OPENAI,
+};
+
 // Errors that should trigger automatic fallback retry.
 const RETRYABLE_ERRORS = new Set(['network_error', 'timeout', 'http_429', 'parse_error']);
 function isRetryable(errorCode) {
@@ -49,25 +56,84 @@ const VALID_RISKS = new Set(['low', 'medium', 'high']);
 
 /**
  * Read the API key for a given provider.
- * Falls back to at_api_key for Anthropic (legacy) and as last resort.
  * @param {string} provider
  * @returns {Promise<string|null>}
  */
 export async function getApiKey(provider) {
   try {
-    const keys = [STORAGE_KEYS.API_KEY];
-    if (provider === 'gemini')   keys.unshift(STORAGE_KEYS.API_KEY_GEMINI);
-    if (provider === 'deepseek') keys.unshift(STORAGE_KEYS.API_KEY_DEEPSEEK);
-    if (provider === 'openai')   keys.unshift(STORAGE_KEYS.API_KEY_OPENAI);
-
-    const out = await chrome.storage.local.get(keys);
-    for (const k of keys) {
-      const v = out?.[k];
-      if (typeof v === 'string' && v.length > 0) return v;
-    }
-    return null;
+    const keyName = PROVIDER_KEY_STORAGE[provider];
+    if (!keyName) return null;
+    const out = await chrome.storage.local.get(keyName);
+    const value = out?.[keyName];
+    return typeof value === 'string' && value.trim().length > 0
+      ? value.trim()
+      : null;
   } catch {
     return null;
+  }
+}
+
+function apiKeyFromStorage(provider, out) {
+  const keyName = PROVIDER_KEY_STORAGE[provider];
+  if (!keyName) return '';
+  const value = out?.[keyName];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function uniqueProviders(providers) {
+  const seen = new Set();
+  const out = [];
+  for (const provider of providers) {
+    if (!isValidProvider(provider) || seen.has(provider)) continue;
+    seen.add(provider);
+    out.push(provider);
+  }
+  return out;
+}
+
+async function getProviderRuntimeConfig() {
+  try {
+    const storageKeys = [
+      STORAGE_KEYS.PROVIDER,
+      STORAGE_KEYS.FALLBACK_PROVIDER,
+      STORAGE_KEYS.MODEL,
+      STORAGE_KEYS.API_KEY_GEMINI,
+      STORAGE_KEYS.API_KEY_DEEPSEEK,
+      STORAGE_KEYS.API_KEY,
+      STORAGE_KEYS.API_KEY_OPENAI,
+    ];
+    const out = await chrome.storage.local.get(storageKeys);
+    const active = isValidProvider(out?.[STORAGE_KEYS.PROVIDER])
+      ? out[STORAGE_KEYS.PROVIDER]
+      : DEFAULT_PROVIDER;
+    const fallbackValue = out?.[STORAGE_KEYS.FALLBACK_PROVIDER];
+    const fallback = fallbackValue === 'none'
+      ? 'none'
+      : (isValidProvider(fallbackValue) ? fallbackValue : DEFAULT_FALLBACK_PROVIDER);
+
+    const candidates = uniqueProviders([
+      active,
+      fallback,
+      DEFAULT_PROVIDER,
+      'anthropic',
+      'deepseek',
+      'openai',
+    ]);
+    const provider = candidates.find((candidate) => apiKeyFromStorage(candidate, out)) || active;
+    const apiKey = apiKeyFromStorage(provider, out);
+    const storedModel = out?.[STORAGE_KEYS.MODEL];
+    const model = isKnownModelForProvider(provider, storedModel)
+      ? storedModel
+      : defaultModelForProvider(provider);
+
+    return { provider, fallback, apiKey, model };
+  } catch {
+    return {
+      provider: DEFAULT_PROVIDER,
+      fallback: DEFAULT_FALLBACK_PROVIDER,
+      apiKey: '',
+      model: defaultModelForProvider(DEFAULT_PROVIDER),
+    };
   }
 }
 
@@ -174,10 +240,11 @@ export const callClaudeForStep = callAiForStep;
  * >}
  */
 export async function callProvider({ system, user, maxTokens, signal, timeoutMs }) {
-  const provider  = await getProvider();
-  const fallback  = await getFallbackProvider();
-  const apiKey    = await getApiKey(provider);
-  const model     = await getModel();
+  const config = await getProviderRuntimeConfig();
+  const provider = config.provider;
+  const fallback = config.fallback;
+  const apiKey = config.apiKey;
+  const model = config.model;
 
   if (!apiKey) {
     return { ok: false, error: 'missing_api_key' };

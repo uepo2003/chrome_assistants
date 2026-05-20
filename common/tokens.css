@@ -3,153 +3,285 @@
  * Single source of truth for color / spacing / radius / typography / shadow
  * across popup, sidepanel, options, and (where reasonable) content overlays.
  *
- * Conventions:
- *   --at-*           public token, safe to use in any surface CSS
- *   --at-bg-*        surface backgrounds
- *   --at-fg-*        foreground (text + icon) colors
- *   --at-accent-*    primary accent (cyan-violet) and its on-color
- *   --at-success/warning/danger  status colors
- *   --at-border      neutral hairline
- *   --at-sp-1..8     spacing scale (4px grid)
- *   --at-radius-*    radius scale
- *   --at-shadow-*    elevation shadows
- *   --at-font-ui     UI font stack
- *   --at-font-mono   monospace font stack
- *   --at-dur-fast/normal animation durations (motion is auto-disabled below)
+ * Theme resolution order (highest priority first):
+ *   1. <html data-theme="dark">   — explicit user override
+ *   2. <html data-theme="light">  — explicit user override
+ *   3. prefers-color-scheme: dark — system preference (default behaviour)
  *
- * Light is the default. Dark is enabled via `prefers-color-scheme: dark`.
- * `prefers-reduced-motion: reduce` zeroes durations so any `transition` /
- * `animation` declarations using these tokens collapse to instant.
+ * `data-theme="system"` (or no attribute) falls through to the system rule.
+ * The :root values below are the LIGHT defaults; `[data-theme="dark"]` and
+ * `@media (prefers-color-scheme: dark) :root:not([data-theme="light"])` flip
+ * everything to dark. This keeps SSR-equivalent first paint stable: there's
+ * no flash if the controller hasn't run yet, because the system preference
+ * already governs first paint.
+ *
+ * Conventions:
+ *   --at-*          public token, safe to use in any surface CSS
+ *   --at-bg-*       surface backgrounds (bg, elev, sunken, raised)
+ *   --at-fg-*       foreground (text + icon) colors
+ *   --at-accent-*   primary accent (violet) + on-color + soft tint
+ *   --at-success/warning/danger   status colors (+ soft variants)
+ *   --at-border / --at-border-soft  hairline borders
+ *   --at-sp-1..8    spacing scale (4px grid)
+ *   --at-radius-*   radius scale
+ *   --at-shadow-*   elevation shadows (warm in light, cold in dark)
+ *   --at-font-ui    UI font stack
+ *   --at-font-mono  monospace font stack
+ *   --at-dur-fast/normal/slow animation durations
+ *
+ * All durations collapse to 0ms under `prefers-reduced-motion: reduce`.
  */
 
 :root {
+  color-scheme: light dark;
+
   /* ---------- Color (light) ----------------------------------------- */
-  --at-bg:          #ffffff;
-  --at-bg-elev:     #f8fafc;          /* cards / nav backdrop */
-  --at-bg-sunken:   #f1f5f9;          /* inputs / subtle wells */
-  --at-fg:          #0f172a;
-  --at-fg-muted:    #64748b;
-  --at-fg-subtle:   #717f96;          /* darkened from #94a3b8 for WCAG (3:1 large UI) */
+  /* Linear / Vercel / Notion inspired neutral palette — warm-leaning zinc. */
+  --at-bg:           #ffffff;
+  --at-bg-elev:      #fafafa;   /* cards, raised surfaces */
+  --at-bg-sunken:    #f4f4f5;   /* inputs, subtle wells */
+  --at-bg-raised:    #ffffff;   /* tooltips, popovers */
+  --at-bg-overlay:   rgba(15, 15, 17, 0.45);   /* modal backdrop */
 
-  /* Light-mode accent/status colors are intentionally shifted DARKER than the
-   * Tailwind-500 baseline so that small-text contrast (pill labels, link
-   * text, danger button labels) crosses WCAG AA 4.5:1 against both white and
-   * the pill-soft (10% tint) backgrounds. See docs/migration-v0.3.md for
-   * the full contrast matrix and the calculation methodology. */
-  --at-accent:      #4f46e5;          /* indigo-600 — 6.29:1 on white */
-  --at-accent-hov:  #4338ca;
-  --at-accent-soft: rgba(79, 70, 229, 0.10);
-  --at-accent-fg:   #ffffff;
+  --at-fg:           #09090b;
+  --at-fg-strong:    #050507;
+  --at-fg-muted:     #52525b;
+  --at-fg-subtle:    #71717a;   /* 4.6:1 on white — passes AA */
+  --at-fg-on-dark:   #fafafa;
 
-  --at-success:     #047857;          /* emerald-700 — 5.48:1 on white */
-  --at-success-soft:rgba(4, 120, 87, 0.10);
-  --at-warning:     #b45309;          /* amber-700 — 5.02:1 on white */
-  --at-warning-soft:rgba(180, 83, 9, 0.12);
-  --at-danger:      #dc2626;          /* red-600 — 4.83:1 on white */
-  --at-danger-soft: rgba(220, 38, 38, 0.10);
+  /* Accent — a confident indigo-violet that reads "modern SaaS" without
+   * tipping into Discord territory. Indigo-500 base shifted slightly cool. */
+  --at-accent:       #6366f1;
+  --at-accent-hov:   #4f46e5;
+  --at-accent-active:#4338ca;
+  --at-accent-soft:  rgba(99, 102, 241, 0.10);
+  --at-accent-softer:rgba(99, 102, 241, 0.05);
+  --at-accent-fg:    #ffffff;
+  --at-accent-grad:  linear-gradient(180deg, #6d6ff5 0%, #5b5ee8 100%);
+  --at-accent-grad-hov: linear-gradient(180deg, #5b5ee8 0%, #4d50d6 100%);
 
-  --at-border:      #e2e8f0;
-  --at-border-soft: #eef2f6;
+  --at-success:      #047857;   /* emerald-700 — 5.5:1 on white */
+  --at-success-soft: rgba(4, 120, 87, 0.10);
+  --at-warning:      #b45309;   /* amber-700 — 5.0:1 on white */
+  --at-warning-soft: rgba(180, 83, 9, 0.12);
+  --at-danger:       #dc2626;   /* red-600 — 4.83:1 on white */
+  --at-danger-soft:  rgba(220, 38, 38, 0.10);
+
+  --at-border:       #e4e4e7;   /* zinc-200 hairline */
+  --at-border-soft:  #f0f0f1;
+  --at-border-strong:#d4d4d8;
 
   /* ---------- Typography -------------------------------------------- */
+  /* Prefer Inter (shipped or via CDN) for clean modern feel; fall back to
+   * native system stacks. CJK fonts come AFTER Latin so kana renders cleanly
+   * in mixed strings. */
   --at-font-ui:
-    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN",
-    "Noto Sans CJK JP", "Yu Gothic UI", sans-serif;
+    "Inter", "Inter Variable", -apple-system, BlinkMacSystemFont,
+    "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans CJK JP",
+    "Yu Gothic UI", "Meiryo", sans-serif;
   --at-font-mono:
-    ui-monospace, "SF Mono", Menlo, Monaco, Consolas,
-    "Liberation Mono", monospace;
+    "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
 
   --at-fs-xs:   11px;
   --at-fs-sm:   12px;
   --at-fs-base: 13px;
   --at-fs-md:   14px;
   --at-fs-lg:   16px;
-  --at-fs-xl:   20px;
+  --at-fs-xl:   19px;
   --at-fs-2xl:  24px;
+  --at-fs-3xl:  30px;
   --at-lh-tight: 1.25;
-  --at-lh-base:  1.45;
-  --at-lh-loose: 1.6;
+  --at-lh-base:  1.5;
+  --at-lh-loose: 1.65;
+  --at-tracking-tight: -0.012em;
+  --at-tracking-tighter: -0.022em;
 
   /* ---------- Spacing (4px grid) ------------------------------------ */
-  --at-sp-1:  4px;
-  --at-sp-2:  8px;
-  --at-sp-3:  12px;
-  --at-sp-4:  16px;
-  --at-sp-5:  20px;
-  --at-sp-6:  24px;
-  --at-sp-7:  32px;
-  --at-sp-8:  40px;
+  --at-sp-0: 0;
+  --at-sp-1: 4px;
+  --at-sp-2: 8px;
+  --at-sp-3: 12px;
+  --at-sp-4: 16px;
+  --at-sp-5: 20px;
+  --at-sp-6: 24px;
+  --at-sp-7: 32px;
+  --at-sp-8: 40px;
+  --at-sp-9: 56px;
 
   /* ---------- Radius ------------------------------------------------ */
+  --at-radius-xs:   4px;
   --at-radius-sm:   6px;
-  --at-radius-md:   10px;
-  --at-radius-lg:   14px;
+  --at-radius-md:   8px;
+  --at-radius-lg:   12px;
+  --at-radius-xl:   16px;
   --at-radius-pill: 999px;
 
+  /* Legacy alias kept for sidepanel-catalog.css which references --at-radius-2 */
+  --at-radius-2:    8px;
+
   /* ---------- Shadows ----------------------------------------------- */
-  --at-shadow-1: 0 1px 2px rgba(15, 23, 42, 0.05),
-                 0 1px 1px rgba(15, 23, 42, 0.03);
-  --at-shadow-2: 0 4px 12px rgba(15, 23, 42, 0.08),
-                 0 1px 2px rgba(15, 23, 42, 0.04);
-  --at-shadow-3: 0 12px 32px rgba(15, 23, 42, 0.16),
-                 0 2px 6px rgba(15, 23, 42, 0.06);
+  /* Layered shadows: a tight tint + a softer ambient. Light shadows use
+   * a slight indigo tint so they blend with the violet accent at hover. */
+  --at-shadow-1:
+    0 1px 1px rgba(15, 15, 17, 0.03),
+    0 1px 2px rgba(15, 15, 17, 0.04);
+  --at-shadow-2:
+    0 1px 1px rgba(15, 15, 17, 0.03),
+    0 4px 12px rgba(15, 15, 17, 0.06);
+  --at-shadow-3:
+    0 1px 2px rgba(15, 15, 17, 0.06),
+    0 12px 32px rgba(15, 15, 17, 0.12),
+    0 24px 64px rgba(15, 15, 17, 0.08);
+  --at-shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.30);
+  --at-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
   /* ---------- Motion ------------------------------------------------ */
   --at-dur-fast:   120ms;
   --at-dur-normal: 200ms;
-  --at-ease:       cubic-bezier(0.2, 0.6, 0.2, 1);
+  --at-dur-slow:   320ms;
+  /* Legacy alias kept for sidepanel-catalog.css */
+  --at-dur-2:      200ms;
+  --at-ease:           cubic-bezier(0.2, 0.6, 0.2, 1);
+  --at-ease-standard:  cubic-bezier(0.4, 0, 0.2, 1);
+  --at-ease-out:       cubic-bezier(0.16, 1, 0.3, 1);
 
   /* ---------- Focus ring -------------------------------------------- */
-  --at-focus-ring: 0 0 0 3px rgba(79, 70, 229, 0.35);
+  --at-focus-ring: 0 0 0 3px rgba(99, 102, 241, 0.30);
+
+  /* ---------- Glass / overlays -------------------------------------- */
+  /* Subtle frosted backdrop for sticky bars + modals. */
+  --at-glass-bg:    rgba(255, 255, 255, 0.78);
+  --at-glass-blur:  saturate(180%) blur(16px);
 }
 
 /* ---------- Dark mode --------------------------------------------- */
+/* Two paths reach the dark palette:
+ *   (a) The user explicitly opted in via <html data-theme="dark">.
+ *   (b) The user has NOT explicitly opted into light and their OS prefers
+ *       dark — i.e. data-theme is unset or "system".
+ * We deliberately use :root:not([data-theme="light"]) inside the media query
+ * so that an explicit light override always wins over the system preference. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --at-bg:          #0b1020;          /* deep navy, not pitch black */
-    --at-bg-elev:     #11172b;
-    --at-bg-sunken:   #0f1426;
-    --at-fg:          #e2e8f0;
-    --at-fg-muted:    #94a3b8;
-    --at-fg-subtle:   #7a8aa0;          /* lifted from #64748b for AA (5.38:1) */
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
 
-    --at-accent:      #818cf8;          /* lighter indigo for AA contrast */
-    --at-accent-hov:  #a5b4fc;
-    --at-accent-soft: rgba(129, 140, 248, 0.16);
-    --at-accent-fg:   #0b1020;
+    --at-bg:           #0a0a0c;   /* near-black with a hint of warm */
+    --at-bg-elev:      #131316;   /* cards */
+    --at-bg-sunken:    #08080a;   /* inputs */
+    --at-bg-raised:    #1a1a1f;   /* popovers, tooltips */
+    --at-bg-overlay:   rgba(0, 0, 0, 0.65);
 
-    --at-success:     #34d399;
-    --at-success-soft:rgba(52, 211, 153, 0.16);
-    --at-warning:     #fbbf24;
-    --at-warning-soft:rgba(251, 191, 36, 0.16);
-    /* Dark danger darkened slightly so #fff on it passes large-UI 3:1
-     * (was #f87171 = 2.77:1 fail). See docs/migration-v0.3.md. */
-    --at-danger:      #dc4747;
-    --at-danger-soft: rgba(220, 71, 71, 0.18);
+    --at-fg:           #fafafa;
+    --at-fg-strong:    #ffffff;
+    --at-fg-muted:     #a1a1aa;
+    --at-fg-subtle:    #71717a;
+    --at-fg-on-dark:   #fafafa;
 
-    --at-border:      #1f2740;
-    --at-border-soft: #182039;
+    --at-accent:       #818cf8;   /* lifted indigo for AA on dark */
+    --at-accent-hov:   #a5b4fc;
+    --at-accent-active:#c7d2fe;
+    --at-accent-soft:  rgba(129, 140, 248, 0.14);
+    --at-accent-softer:rgba(129, 140, 248, 0.07);
+    --at-accent-fg:    #0a0a0c;
+    --at-accent-grad:  linear-gradient(180deg, #8a93f9 0%, #6d75ef 100%);
+    --at-accent-grad-hov: linear-gradient(180deg, #a5b4fc 0%, #8a93f9 100%);
 
-    --at-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4),
-                   0 1px 1px rgba(0, 0, 0, 0.25);
-    --at-shadow-2: 0 4px 16px rgba(0, 0, 0, 0.5),
-                   0 1px 3px rgba(0, 0, 0, 0.3);
-    --at-shadow-3: 0 16px 40px rgba(0, 0, 0, 0.6),
-                   0 2px 8px rgba(0, 0, 0, 0.35);
+    --at-success:      #4ade80;
+    --at-success-soft: rgba(74, 222, 128, 0.14);
+    --at-warning:      #fbbf24;
+    --at-warning-soft: rgba(251, 191, 36, 0.14);
+    --at-danger:       #f87171;
+    --at-danger-soft:  rgba(248, 113, 113, 0.14);
 
-    --at-focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.45);
+    --at-border:       #27272a;   /* zinc-800 */
+    --at-border-soft:  #1a1a1d;
+    --at-border-strong:#3f3f46;
+
+    --at-shadow-1:
+      0 1px 1px rgba(0, 0, 0, 0.35),
+      0 1px 2px rgba(0, 0, 0, 0.30);
+    --at-shadow-2:
+      0 1px 1px rgba(0, 0, 0, 0.40),
+      0 4px 16px rgba(0, 0, 0, 0.40);
+    --at-shadow-3:
+      0 1px 2px rgba(0, 0, 0, 0.50),
+      0 16px 40px rgba(0, 0, 0, 0.55),
+      0 32px 80px rgba(0, 0, 0, 0.40);
+    --at-shadow-focus: 0 0 0 3px rgba(129, 140, 248, 0.40);
+    --at-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    --at-focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.38);
+
+    --at-glass-bg:    rgba(13, 13, 16, 0.72);
   }
 }
 
+/* Explicit dark override via the controller — wins even on light-preferring
+ * systems. Must mirror the media-query block. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --at-bg:           #0a0a0c;
+  --at-bg-elev:      #131316;
+  --at-bg-sunken:    #08080a;
+  --at-bg-raised:    #1a1a1f;
+  --at-bg-overlay:   rgba(0, 0, 0, 0.65);
+
+  --at-fg:           #fafafa;
+  --at-fg-strong:    #ffffff;
+  --at-fg-muted:     #a1a1aa;
+  --at-fg-subtle:    #71717a;
+  --at-fg-on-dark:   #fafafa;
+
+  --at-accent:       #818cf8;
+  --at-accent-hov:   #a5b4fc;
+  --at-accent-active:#c7d2fe;
+  --at-accent-soft:  rgba(129, 140, 248, 0.14);
+  --at-accent-softer:rgba(129, 140, 248, 0.07);
+  --at-accent-fg:    #0a0a0c;
+  --at-accent-grad:  linear-gradient(180deg, #8a93f9 0%, #6d75ef 100%);
+  --at-accent-grad-hov: linear-gradient(180deg, #a5b4fc 0%, #8a93f9 100%);
+
+  --at-success:      #4ade80;
+  --at-success-soft: rgba(74, 222, 128, 0.14);
+  --at-warning:      #fbbf24;
+  --at-warning-soft: rgba(251, 191, 36, 0.14);
+  --at-danger:       #f87171;
+  --at-danger-soft:  rgba(248, 113, 113, 0.14);
+
+  --at-border:       #27272a;
+  --at-border-soft:  #1a1a1d;
+  --at-border-strong:#3f3f46;
+
+  --at-shadow-1:
+    0 1px 1px rgba(0, 0, 0, 0.35),
+    0 1px 2px rgba(0, 0, 0, 0.30);
+  --at-shadow-2:
+    0 1px 1px rgba(0, 0, 0, 0.40),
+    0 4px 16px rgba(0, 0, 0, 0.40);
+  --at-shadow-3:
+    0 1px 2px rgba(0, 0, 0, 0.50),
+    0 16px 40px rgba(0, 0, 0, 0.55),
+    0 32px 80px rgba(0, 0, 0, 0.40);
+  --at-shadow-focus: 0 0 0 3px rgba(129, 140, 248, 0.40);
+  --at-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+  --at-focus-ring: 0 0 0 3px rgba(129, 140, 248, 0.38);
+
+  --at-glass-bg:    rgba(13, 13, 16, 0.72);
+}
+
 /* Honour reduce-motion users: collapse all token-driven durations. Any CSS
- * that uses `transition: ... var(--at-dur-fast)` or `animation-duration:
- * var(--at-dur-normal)` becomes effectively instant. We keep the variables
- * defined (rather than removing transition declarations entirely) so that
- * focus rings and other UA defaults still appear cleanly. */
+ * that uses `transition: ... var(--at-dur-fast)` becomes effectively instant.
+ * We keep the variables defined so focus rings and other UA defaults still
+ * appear cleanly. */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --at-dur-fast:   0ms;
     --at-dur-normal: 0ms;
+    --at-dur-slow:   0ms;
+    --at-dur-2:      0ms;
   }
 }

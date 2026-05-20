@@ -1970,6 +1970,42 @@
       dom.upgradeBannerDismiss.addEventListener("click", dismissUpgradeBanner);
     }
 
+    // Theme cycle pill (System → Light → Dark → System). Sidepanel doesn't
+    // have space for a full segmented control, so we cycle on click and use
+    // an icon that reflects the current effective theme. Persists via
+    // common/theme.js → chrome.storage.local.at_theme.
+    const themeCycleBtn = document.getElementById("themeCycleBtn");
+    if (themeCycleBtn) {
+      const ICONS = {
+        system:
+          '<svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="11" height="8" rx="1.5"/><path d="M5 12.5h4M7 10.5v2"/></svg>',
+        light:
+          '<svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="2.5"/><path d="M7 1.5v1.2M7 11.3v1.2M1.5 7h1.2M11.3 7h1.2M2.9 2.9l.85.85M10.25 10.25l.85.85M2.9 11.1l.85-.85M10.25 3.75l.85-.85"/></svg>',
+        dark:
+          '<svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.5 8.2a4.5 4.5 0 1 1-5.7-5.7 4.5 4.5 0 0 0 5.7 5.7Z"/></svg>',
+      };
+      const ORDER = ["system", "light", "dark"];
+      const reflectTheme = () => {
+        const t = (globalThis.__AT_THEME__ && globalThis.__AT_THEME__.value) || "system";
+        themeCycleBtn.innerHTML = ICONS[t] || ICONS.system;
+        themeCycleBtn.setAttribute("data-theme", t);
+      };
+      reflectTheme();
+      themeCycleBtn.addEventListener("click", () => {
+        try {
+          const cur =
+            (globalThis.__AT_THEME__ && globalThis.__AT_THEME__.value) || "system";
+          const idx = ORDER.indexOf(cur);
+          const next = ORDER[(idx + 1) % ORDER.length];
+          globalThis.__AT_THEME__ && globalThis.__AT_THEME__.set(next);
+        } catch (_e) {}
+        reflectTheme();
+      });
+      try {
+        globalThis.__AT_THEME__ && globalThis.__AT_THEME__.onChange(reflectTheme);
+      } catch (_e) {}
+    }
+
     // Language pill.
     const langPill = document.getElementById("langPill");
     if (langPill) {

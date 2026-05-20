@@ -54,6 +54,7 @@
     modeSelect: document.getElementById('modeSelect'),
     speedSelect: document.getElementById('speedSelect'),
     footerSettings: document.getElementById('footerSettings'),
+    themeToggle: document.getElementById('themeToggle'),
   };
 
   // ---- Helpers ----
@@ -248,11 +249,23 @@
     }
   }
 
+  function renderTheme() {
+    if (!els.themeToggle) return;
+    const theme = (globalThis.__AT_THEME__ && globalThis.__AT_THEME__.value) || 'system';
+    const buttons = els.themeToggle.querySelectorAll('[data-theme-value]');
+    buttons.forEach((btn) => {
+      const isActive = btn.getAttribute('data-theme-value') === theme;
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
+    });
+  }
+
   function renderAll() {
     renderTab();
     renderStatus();
     renderAction();
     renderSettings();
+    renderTheme();
   }
 
   // ---- Event handlers (bound once) ----
@@ -263,7 +276,7 @@
     els.primaryBtn.addEventListener('click', onPrimaryClick);
     els.openSettingsBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      openOptions('api-key-gemini');
+      openOptions('provider-select');
     });
     els.footerSettings.addEventListener('click', (e) => {
       e.preventDefault();
@@ -271,6 +284,21 @@
     });
     els.modeSelect.addEventListener('change', onModeChange);
     els.speedSelect.addEventListener('change', onSpeedChange);
+    if (els.themeToggle) {
+      els.themeToggle.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest('[data-theme-value]');
+        if (!btn) return;
+        const value = btn.getAttribute('data-theme-value');
+        if (!value) return;
+        try {
+          globalThis.__AT_THEME__ && globalThis.__AT_THEME__.set(value);
+        } catch (_e) {}
+        renderTheme();
+      });
+      try {
+        globalThis.__AT_THEME__ && globalThis.__AT_THEME__.onChange(renderTheme);
+      } catch (_e) {}
+    }
     if (els.langSelect) {
       els.langSelect.addEventListener('change', (e) => {
         try {
@@ -411,13 +439,13 @@
       STORAGE_KEYS.MODE,
       STORAGE_KEYS.SPEED,
     ]);
-    // Gemini-first: any registered provider key clears the warning.
-    state.apiKey =
-      items[STORAGE_KEYS.API_KEY_GEMINI] ||
-      items[STORAGE_KEYS.API_KEY] ||
-      items[STORAGE_KEYS.API_KEY_DEEPSEEK] ||
-      items[STORAGE_KEYS.API_KEY_OPENAI] ||
-      '';
+    // Any registered provider key clears the warning.
+    state.apiKey = [
+      items[STORAGE_KEYS.API_KEY_GEMINI],
+      items[STORAGE_KEYS.API_KEY],
+      items[STORAGE_KEYS.API_KEY_DEEPSEEK],
+      items[STORAGE_KEYS.API_KEY_OPENAI],
+    ].find((value) => typeof value === 'string' && value.trim().length > 0) || '';
     state.mode = items[STORAGE_KEYS.MODE] || 'hybrid';
     state.speed = items[STORAGE_KEYS.SPEED] || 'normal';
 

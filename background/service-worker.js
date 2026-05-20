@@ -624,11 +624,24 @@ async function hasActiveProviderKey(provider) {
   }
 }
 
+async function hasAnyProviderKey() {
+  const keys = [
+    'at_api_key_gemini',
+    'at_api_key',
+    'at_api_key_deepseek',
+    'at_api_key_openai',
+  ];
+  try {
+    const out = await chrome.storage.local.get(keys);
+    return keys.some((key) => typeof out?.[key] === 'string' && out[key].trim().length > 0);
+  } catch {
+    return false;
+  }
+}
+
 async function canUseAiForCurrentSettings() {
   try {
-    const out = await chrome.storage.local.get(['at_provider']);
-    const provider = isValidProvider(out?.at_provider) ? out.at_provider : DEFAULT_PROVIDER;
-    return hasActiveProviderKey(provider);
+    return hasAnyProviderKey();
   } catch {
     return false;
   }

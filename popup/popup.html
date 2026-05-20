@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="../common/tokens.css" />
     <link rel="stylesheet" href="../common/components.css" />
     <link rel="stylesheet" href="popup.css" />
+    <!-- Theme controller must run before paint so <html data-theme> is set
+         synchronously and there is no flash of light-on-dark. -->
+    <script src="../common/theme.js"></script>
   </head>
   <body class="qc-root">
     <main class="app" id="app">
@@ -89,7 +92,67 @@
         </div>
       </section>
 
-      <section class="quick-settings quick-settings--lang">
+      <section class="settings-row" aria-label="Appearance and language">
+        <div
+          class="qc-theme-toggle"
+          id="themeToggle"
+          role="radiogroup"
+          aria-label="Theme"
+          data-i18n-aria-label="theme.groupAria"
+        >
+          <button
+            type="button"
+            class="qc-theme-toggle__btn"
+            data-theme-value="system"
+            role="radio"
+            aria-checked="true"
+            aria-pressed="true"
+            aria-label="Match system"
+            data-i18n-aria-label="theme.system.aria"
+            data-i18n-title="theme.system.label"
+            title="System"
+          >
+            <span class="qc-theme-toggle__icon" aria-hidden="true">
+              <svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="11" height="8" rx="1.5"/><path d="M5 12.5h4M7 10.5v2"/></svg>
+            </span>
+            <span data-i18n="theme.system.short">Auto</span>
+          </button>
+          <button
+            type="button"
+            class="qc-theme-toggle__btn"
+            data-theme-value="light"
+            role="radio"
+            aria-checked="false"
+            aria-pressed="false"
+            aria-label="Light theme"
+            data-i18n-aria-label="theme.light.aria"
+            data-i18n-title="theme.light.label"
+            title="Light"
+          >
+            <span class="qc-theme-toggle__icon" aria-hidden="true">
+              <svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="2.5"/><path d="M7 1.5v1.2M7 11.3v1.2M1.5 7h1.2M11.3 7h1.2M2.9 2.9l.85.85M10.25 10.25l.85.85M2.9 11.1l.85-.85M10.25 3.75l.85-.85"/></svg>
+            </span>
+            <span data-i18n="theme.light.short">Light</span>
+          </button>
+          <button
+            type="button"
+            class="qc-theme-toggle__btn"
+            data-theme-value="dark"
+            role="radio"
+            aria-checked="false"
+            aria-pressed="false"
+            aria-label="Dark theme"
+            data-i18n-aria-label="theme.dark.aria"
+            data-i18n-title="theme.dark.label"
+            title="Dark"
+          >
+            <span class="qc-theme-toggle__icon" aria-hidden="true">
+              <svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 8.2a4.5 4.5 0 1 1-5.7-5.7 4.5 4.5 0 0 0 5.7 5.7Z"/></svg>
+            </span>
+            <span data-i18n="theme.dark.short">Dark</span>
+          </button>
+        </div>
+
         <label class="lang-chip" for="langSelect">
           <span class="lang-chip__label" aria-hidden="true">A文</span>
           <select id="langSelect" class="lang-chip__select" aria-label="Language" data-i18n-aria-label="popup.langSelectAria">

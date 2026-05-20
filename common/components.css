@@ -4,9 +4,10 @@
  * surface-specific stylesheet (popup/sidepanel/options) so per-surface
  * overrides still win on specificity.
  *
- * Component classes are namespaced `qc-` to avoid colliding with the
- * existing `.btn` / `.card` / `.field` already present in surface CSS.
- * Surfaces can opt in incrementally; the legacy classes keep working.
+ * Component classes are namespaced `qc-` to avoid colliding with the legacy
+ * `.btn` / `.card` / `.field` that lives in some surface CSS. The reusable
+ * primitives below all derive 100% of their color from tokens.css so a
+ * single theme flip cascades everywhere.
  */
 
 /* ---------- Base reset (token-aware) -------------------------------- */
@@ -16,66 +17,84 @@
   line-height: var(--at-lh-base);
   color: var(--at-fg);
   background: var(--at-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
 /* ---------- Button -------------------------------------------------- */
 .qc-btn {
   appearance: none;
   -webkit-appearance: none;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--at-sp-2);
-  padding: var(--at-sp-2) var(--at-sp-4);
+  padding: 0 var(--at-sp-4);
+  height: 32px;
   border-radius: var(--at-radius-md);
   border: 1px solid transparent;
   font-family: inherit;
   font-size: var(--at-fs-base);
   font-weight: 600;
   line-height: 1;
+  letter-spacing: -0.005em;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
   transition:
-    background-color var(--at-dur-fast) var(--at-ease),
-    border-color     var(--at-dur-fast) var(--at-ease),
-    color            var(--at-dur-fast) var(--at-ease),
-    box-shadow       var(--at-dur-fast) var(--at-ease),
-    transform        var(--at-dur-fast) var(--at-ease);
+    background var(--at-dur-fast) var(--at-ease),
+    border-color var(--at-dur-fast) var(--at-ease),
+    color var(--at-dur-fast) var(--at-ease),
+    box-shadow var(--at-dur-fast) var(--at-ease),
+    transform var(--at-dur-fast) var(--at-ease),
+    opacity var(--at-dur-fast) var(--at-ease);
 }
 .qc-btn:focus-visible {
-  /* Both the universal `outline` (declared at the bottom) AND the halo
-   * box-shadow apply; do NOT set `outline: none` (Section 11.1). */
+  /* The universal outline (Section bottom) AND a soft halo coexist; do
+   * NOT set `outline: none` here. */
   box-shadow: var(--at-focus-ring);
 }
-.qc-btn:active:not(:disabled) {
-  transform: translateY(1px);
+.qc-btn:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: translateY(0.5px);
 }
 .qc-btn:disabled,
 .qc-btn[aria-disabled="true"] {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .qc-btn--primary {
-  background: var(--at-accent);
+  background: var(--at-accent-grad);
   color: var(--at-accent-fg);
-  border-color: var(--at-accent);
-  box-shadow: var(--at-shadow-1);
+  border-color: transparent;
+  box-shadow:
+    var(--at-shadow-inset),
+    0 1px 2px rgba(15, 15, 17, 0.10),
+    0 1px 0 0 rgba(255, 255, 255, 0.12) inset;
 }
 .qc-btn--primary:hover:not(:disabled) {
-  background: var(--at-accent-hov);
-  border-color: var(--at-accent-hov);
+  background: var(--at-accent-grad-hov);
+}
+.qc-btn--primary:active:not(:disabled) {
+  background: var(--at-accent-active);
 }
 
 .qc-btn--secondary {
   background: var(--at-bg);
   color: var(--at-fg);
   border-color: var(--at-border);
+  box-shadow: var(--at-shadow-1);
 }
 .qc-btn--secondary:hover:not(:disabled) {
   background: var(--at-bg-elev);
-  border-color: var(--at-fg-subtle);
+  border-color: var(--at-border-strong);
+}
+.qc-btn--secondary:active:not(:disabled) {
+  background: var(--at-bg-sunken);
 }
 
 .qc-btn--ghost {
@@ -87,24 +106,33 @@
   background: var(--at-bg-elev);
   color: var(--at-fg);
 }
+.qc-btn--ghost:active:not(:disabled) {
+  background: var(--at-bg-sunken);
+}
 
 .qc-btn--danger {
   background: var(--at-danger);
-  color: #fff;
-  border-color: var(--at-danger);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow:
+    var(--at-shadow-inset),
+    0 1px 2px rgba(220, 38, 38, 0.25);
 }
 .qc-btn--danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--at-danger) 88%, black);
-  border-color: color-mix(in srgb, var(--at-danger) 88%, black);
 }
 
 .qc-btn--sm {
-  padding: var(--at-sp-1) var(--at-sp-3);
+  height: 26px;
+  padding: 0 var(--at-sp-3);
   font-size: var(--at-fs-sm);
+  border-radius: var(--at-radius-sm);
 }
 .qc-btn--lg {
-  padding: var(--at-sp-3) var(--at-sp-5);
+  height: 40px;
+  padding: 0 var(--at-sp-5);
   font-size: var(--at-fs-md);
+  border-radius: var(--at-radius-md);
 }
 .qc-btn--full {
   width: 100%;
@@ -114,20 +142,24 @@
 .qc-pill {
   display: inline-flex;
   align-items: center;
-  gap: var(--at-sp-2);
-  padding: 3px var(--at-sp-3);
+  gap: 6px;
+  padding: 3px 10px;
   border-radius: var(--at-radius-pill);
   background: var(--at-bg-sunken);
   color: var(--at-fg-muted);
   border: 1px solid var(--at-border);
   font-size: var(--at-fs-xs);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   white-space: nowrap;
+  transition:
+    background var(--at-dur-fast) var(--at-ease),
+    color var(--at-dur-fast) var(--at-ease),
+    border-color var(--at-dur-fast) var(--at-ease);
 }
 .qc-pill__dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--at-fg-subtle);
   flex: none;
@@ -141,7 +173,7 @@
 }
 .qc-pill[data-state="running"] .qc-pill__dot {
   background: var(--at-success);
-  animation: qc-pulse 1.6s ease-in-out infinite;
+  animation: qc-pulse 1.8s ease-in-out infinite;
 }
 .qc-pill[data-state="paused"] {
   background: var(--at-warning-soft);
@@ -170,7 +202,7 @@
 
 @keyframes qc-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.45; transform: scale(0.85); }
+  50%      { opacity: 0.4; transform: scale(0.85); }
 }
 
 /* ---------- Card --------------------------------------------------- */
@@ -189,26 +221,29 @@
   cursor: pointer;
   transition:
     border-color var(--at-dur-fast) var(--at-ease),
-    box-shadow   var(--at-dur-fast) var(--at-ease),
-    transform    var(--at-dur-fast) var(--at-ease);
+    background var(--at-dur-fast) var(--at-ease),
+    box-shadow var(--at-dur-fast) var(--at-ease),
+    transform var(--at-dur-fast) var(--at-ease);
 }
 .qc-card--interactive:hover {
-  border-color: color-mix(in srgb, var(--at-accent) 50%, var(--at-border));
+  border-color: var(--at-border-strong);
   box-shadow: var(--at-shadow-2);
+  transform: translateY(-1px);
+}
+.qc-card--interactive:active {
+  transform: translateY(0);
+  box-shadow: var(--at-shadow-1);
 }
 .qc-card--interactive:focus-visible {
-  /* Universal outline (declared at bottom) handles the focus indicator.
-   * Card also gets a tinted border + halo to feel "focused" rather than
-   * just "outlined" — both layers coexist. */
-  box-shadow: var(--at-focus-ring);
   border-color: var(--at-accent);
+  box-shadow: var(--at-focus-ring), var(--at-shadow-2);
 }
 .qc-card[data-disabled="true"],
 .qc-card.qc-card--disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
-  filter: saturate(0.7);
+  filter: saturate(0.6);
 }
 
 /* ---------- Field (label + control) -------------------------------- */
@@ -224,11 +259,23 @@
   color: var(--at-fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: var(--at-sp-2);
 }
 .qc-field__hint {
   font-size: var(--at-fs-xs);
   color: var(--at-fg-muted);
+  margin: 0;
+  line-height: var(--at-lh-base);
 }
+.qc-field__hint a {
+  color: var(--at-accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+.qc-field__hint a:hover { text-decoration: underline; }
+
 .qc-field__control,
 .qc-input,
 .qc-select,
@@ -242,33 +289,40 @@
   background: var(--at-bg);
   border: 1px solid var(--at-border);
   border-radius: var(--at-radius-md);
-  padding: var(--at-sp-2) var(--at-sp-3);
+  padding: 0 var(--at-sp-3);
+  height: 32px;
   line-height: var(--at-lh-base);
   transition:
     border-color var(--at-dur-fast) var(--at-ease),
-    box-shadow   var(--at-dur-fast) var(--at-ease);
+    background var(--at-dur-fast) var(--at-ease),
+    box-shadow var(--at-dur-fast) var(--at-ease);
+}
+.qc-input::placeholder,
+.qc-textarea::placeholder {
+  color: var(--at-fg-subtle);
+  opacity: 1;
 }
 .qc-input:hover,
 .qc-select:hover,
 .qc-textarea:hover {
-  border-color: var(--at-fg-subtle);
+  border-color: var(--at-border-strong);
 }
 .qc-input:focus-visible,
 .qc-select:focus-visible,
 .qc-textarea:focus-visible {
-  /* Inputs get a colored border + halo box-shadow on focus; the universal
-   * outline at the bottom of this file remains visible as a second layer
-   * (Section 11.1). */
   border-color: var(--at-accent);
   box-shadow: var(--at-focus-ring);
+  background: var(--at-bg);
 }
 .qc-textarea {
   resize: vertical;
-  min-height: 64px;
+  min-height: 72px;
+  height: auto;
+  padding: var(--at-sp-2) var(--at-sp-3);
 }
 .qc-select {
   padding-right: var(--at-sp-7);
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 4.5l3 3 3-3' fill='none' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M3 4.5l3 3 3-3' fill='none' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
   background-repeat: no-repeat;
   background-position: right var(--at-sp-3) center;
   cursor: pointer;
@@ -286,38 +340,41 @@
 }
 .qc-modal[data-open="true"] {
   display: flex;
+  animation: qc-fade-in var(--at-dur-normal) var(--at-ease-out);
 }
 .qc-modal__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  background: var(--at-bg-overlay);
+  backdrop-filter: blur(8px) saturate(150%);
+  -webkit-backdrop-filter: blur(8px) saturate(150%);
 }
 .qc-modal__dialog {
   position: relative;
   z-index: 1;
-  background: var(--at-bg);
+  background: var(--at-bg-raised);
   color: var(--at-fg);
   border: 1px solid var(--at-border);
-  border-radius: var(--at-radius-lg);
+  border-radius: var(--at-radius-xl);
   box-shadow: var(--at-shadow-3);
   width: min(560px, 100%);
   max-height: calc(100vh - 2 * var(--at-sp-4));
   overflow: auto;
-  padding: var(--at-sp-5);
+  padding: var(--at-sp-6);
+  animation: qc-modal-pop var(--at-dur-normal) var(--at-ease-out);
 }
 .qc-modal__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--at-sp-3);
-  margin-bottom: var(--at-sp-3);
+  margin-bottom: var(--at-sp-4);
 }
 .qc-modal__title {
   margin: 0;
   font-size: var(--at-fs-lg);
   font-weight: 600;
+  letter-spacing: var(--at-tracking-tight);
   line-height: var(--at-lh-tight);
 }
 .qc-modal__body {
@@ -326,11 +383,115 @@
   line-height: var(--at-lh-base);
 }
 .qc-modal__footer {
-  margin-top: var(--at-sp-5);
+  margin-top: var(--at-sp-6);
   display: flex;
   gap: var(--at-sp-2);
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+@keyframes qc-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes qc-modal-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* ---------- Theme toggle (segmented control) ----------------------- */
+/* A 3-way segmented control used by popup + options for System/Light/Dark.
+ * Visual model is a single pill with the active option in an accent capsule. */
+.qc-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  background: var(--at-bg-sunken);
+  border: 1px solid var(--at-border);
+  border-radius: var(--at-radius-pill);
+  gap: 0;
+  position: relative;
+}
+.qc-theme-toggle__btn {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--at-sp-1);
+  padding: 0 var(--at-sp-3);
+  height: 24px;
+  min-width: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--at-fg-muted);
+  font-family: inherit;
+  font-size: var(--at-fs-xs);
+  font-weight: 600;
+  border-radius: var(--at-radius-pill);
+  cursor: pointer;
+  transition:
+    color var(--at-dur-fast) var(--at-ease),
+    background var(--at-dur-fast) var(--at-ease);
+}
+.qc-theme-toggle__btn:hover {
+  color: var(--at-fg);
+}
+.qc-theme-toggle__btn[aria-pressed="true"] {
+  background: var(--at-bg);
+  color: var(--at-fg);
+  box-shadow: var(--at-shadow-1);
+}
+.qc-theme-toggle__btn:focus-visible {
+  box-shadow: var(--at-focus-ring);
+  outline: none;
+}
+.qc-theme-toggle__icon {
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- Divider ----------------------------------------------- */
+.qc-divider {
+  height: 1px;
+  background: var(--at-border-soft);
+  border: 0;
+  margin: var(--at-sp-4) 0;
+}
+
+/* ---------- Tag / Badge ------------------------------------------- */
+.qc-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--at-fg-muted);
+  background: var(--at-bg-sunken);
+  border: 1px solid var(--at-border);
+  border-radius: var(--at-radius-sm);
+  padding: 1px 6px;
+  line-height: 16px;
+}
+.qc-tag--accent {
+  color: var(--at-accent-fg);
+  background: var(--at-accent);
+  border-color: transparent;
+}
+.qc-tag--success {
+  color: var(--at-success);
+  background: var(--at-success-soft);
+  border-color: color-mix(in srgb, var(--at-success) 25%, transparent);
+}
+.qc-tag--warning {
+  color: var(--at-warning);
+  background: var(--at-warning-soft);
+  border-color: color-mix(in srgb, var(--at-warning) 25%, transparent);
 }
 
 /* ---------- Utility ------------------------------------------------ */
@@ -353,22 +514,49 @@
   white-space: nowrap; border: 0;
 }
 
+/* ---------- Native control theming -------------------------------- */
+/* Browser-rendered radio/checkbox inherit the accent so they stop looking
+ * like 2010-era macOS even before surface CSS overrides kick in. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--at-accent);
+}
+
+/* Selection color uses the accent so highlighting feels intentional. */
+::selection {
+  background: color-mix(in srgb, var(--at-accent) 35%, transparent);
+  color: var(--at-fg-strong);
+}
+
+/* ---------- Custom scrollbars ------------------------------------- */
+/* Thin, subtle scrollbars that adapt to the theme without screaming. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--at-border-strong) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--at-border);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--at-border-strong);
+  background-clip: padding-box;
+}
+
 /* ---------- Focus baseline ---------------------------------------- */
 /*
- * Two-layer focus indicator (Section 11.1):
+ * Two-layer focus indicator (preserved from earlier work):
  *
  *   1. Universal `*:focus-visible` outline ensures every focusable element
- *      — including custom elements like `.qc-card[tabindex]`, links, and
- *      anything authors mark `role="button"` — has a visible focus state
- *      even if a surface stylesheet forgets to wire one up. Uses the accent
- *      token so it inherits light/dark mode automatically.
- *   2. The `box-shadow` ring kept on canonical controls (buttons, inputs)
- *      remains as a stronger, "halo" focus that is more visually familiar
- *      for users coming from modern web apps. Both layers can coexist — the
- *      outline lives outside the element (no overlap with the halo).
- *
- * Authors writing surface-specific CSS should NOT set `outline: none`
- * without providing an equally-visible substitute (see WCAG 2.4.7).
+ *      has a visible focus state, even custom widgets with role="button".
+ *   2. The halo `box-shadow` on canonical controls (buttons, inputs)
+ *      provides a stronger, modern focus state. Both layers coexist;
+ *      surfaces MUST NOT `outline: none` without an equally-visible
+ *      substitute (WCAG 2.4.7).
  */
 *:focus-visible {
   outline: 2px solid var(--at-accent);
@@ -376,8 +564,5 @@
 }
 
 :where(button, [role="button"], a, input, select, textarea):focus-visible {
-  /* Keep the halo glow as a secondary indicator on canonical controls.
-   * Do NOT set `outline: none` here — the universal rule above must
-   * remain visible even if a per-surface stylesheet overrides box-shadow. */
   box-shadow: var(--at-focus-ring);
 }

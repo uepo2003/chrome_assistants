@@ -68,17 +68,19 @@ const keyWarning      = $('key-warning');
 const apiKeyGemini    = $('api-key-gemini');
 const apiKeyDeepSeek  = $('api-key-deepseek');
 const apiKeyOpenAI    = $('api-key-openai');
+const providerKeyFields = {
+  gemini: $('key-field-gemini'),
+  deepseek: $('key-field-deepseek'),
+  anthropic: $('key-field-anthropic'),
+  openai: $('key-field-openai'),
+};
 
 const saveKeyBtn   = $('save-key');
 const testKeyBtn   = $('test-key');
-const testSpinner  = $('test-spinner');
 const testResult   = $('test-result');
 const saveToast    = $('save-toast');
 const autoStartCheckbox = $('auto-start');
 
-const cancelTestBtn = $('cancel-test');
-const testInflight  = $('test-inflight');
-const testElapsed   = $('test-elapsed');
 const langSelect    = $('lang-select');
 
 // Maintenance section
@@ -105,8 +107,6 @@ const speedRadios = () => document.querySelectorAll('input[name="speed"]');
 
 // State for the in-flight Test connection request.
 let testAbort = null;
-let testElapsedTimer = null;
-let testStartedAt = 0;
 
 // ---------------------------------------------------------------------------
 // Model dropdown management
@@ -154,18 +154,40 @@ function showTestResult(success, message) {
   testResult.className = 'test-result ' + (success ? 'success' : 'failure');
 }
 
+function getSelectedProvider() {
+  const provider = providerSelect ? providerSelect.value : DEFAULTS.PROVIDER;
+  return VALID_PROVIDERS.has(provider) ? provider : DEFAULTS.PROVIDER;
+}
+
+function getProviderKeyInput(provider) {
+  if (provider === 'gemini') return apiKeyGemini;
+  if (provider === 'deepseek') return apiKeyDeepSeek;
+  if (provider === 'openai') return apiKeyOpenAI;
+  return apiKeyInput;
+}
+
+function updateProviderKeyFields() {
+  const provider = getSelectedProvider();
+  Object.keys(providerKeyFields).forEach((key) => {
+    const field = providerKeyFields[key];
+    if (field) field.hidden = key !== provider;
+  });
+  updateKeyWarning();
+  updateTestButtonEnabled();
+}
+
 function updateTestButtonEnabled() {
-  // Enable "Test" whenever ANY key is filled in.
-  const provider = providerSelect ? providerSelect.value : 'anthropic';
-  let hasKey = false;
-  if (provider === 'gemini')    hasKey = (apiKeyGemini && apiKeyGemini.value.trim().length > 0) || (apiKeyInput && apiKeyInput.value.trim().length > 0);
-  else if (provider === 'deepseek') hasKey = (apiKeyDeepSeek && apiKeyDeepSeek.value.trim().length > 0) || (apiKeyInput && apiKeyInput.value.trim().length > 0);
-  else if (provider === 'openai')   hasKey = (apiKeyOpenAI && apiKeyOpenAI.value.trim().length > 0) || (apiKeyInput && apiKeyInput.value.trim().length > 0);
-  else hasKey = (apiKeyInput && apiKeyInput.value.trim().length > 0);
-  testKeyBtn.disabled = !hasKey;
+  if (!testKeyBtn) return;
+  const input = getProviderKeyInput(getSelectedProvider());
+  const hasKey = !!(input && input.value.trim().length > 0);
+  testKeyBtn.disabled = !hasKey || testUiInFlight;
 }
 
 function updateKeyWarning() {
+  if (getSelectedProvider() !== 'anthropic') {
+    if (keyWarning) keyWarning.hidden = true;
+    return;
+  }
   const v = apiKeyInput ? apiKeyInput.value.trim() : '';
   if (v.length > 0 && !v.startsWith('sk-ant-')) {
     if (keyWarning) keyWarning.hidden = false;
@@ -325,8 +347,7 @@ async function loadSettings() {
       typeof stored[KEYS.DEV_MODE] === 'boolean' ? stored[KEYS.DEV_MODE] : DEFAULTS.DEV_MODE;
   }
 
-  updateTestButtonEnabled();
-  updateKeyWarning();
+  updateProviderKeyFields();
 }
 
 async function saveAll({ showToast } = { showToast: true }) {
@@ -399,24 +420,7 @@ let testUiInFlight = false;
 
 function startTestUiInFlight() {
   testUiInFlight = true;
-  testKeyBtn.disabled = true;
-  testSpinner.hidden = false;
-  cancelTestBtn.hidden = false;
-  if (testInflight) {
-    testInflight.hidden = false;
-    testInflight.textContent = tt('options.apiKey.testing');
-  }
-  testElapsed.hidden = false;
-  testElapsed.textContent = '0s';
-  testElapsed.classList.remove('test-elapsed--slow');
-  testStartedAt = Date.now();
-  if (testElapsedTimer) clearInterval(testElapsedTimer);
-  testElapsedTimer = setInterval(() => {
-    const elapsed = Date.now() - testStartedAt;
-    const sec = Math.floor(elapsed / 1000);
-    testElapsed.textContent = sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m${sec % 60}s`;
-    if (elapsed > 8000) testElapsed.classList.add('test-elapsed--slow');
-  }, 250);
+  updateTestButtonEnabled();
 }
 
 // Idempotent: safe to call multiple times; only the first call after a
@@ -424,28 +428,13 @@ function startTestUiInFlight() {
 function endTestUiInFlight() {
   if (!testUiInFlight) return;
   testUiInFlight = false;
-  if (testElapsedTimer) {
-    clearInterval(testElapsedTimer);
-    testElapsedTimer = null;
-  }
-  testSpinner.hidden = true;
-  cancelTestBtn.hidden = true;
-  if (testInflight) {
-    testInflight.hidden = true;
-    testInflight.textContent = '';
-  }
-  testElapsed.hidden = true;
-  testElapsed.classList.remove('test-elapsed--slow');
   updateTestButtonEnabled();
 }
 
 /** Resolve the API key for the currently-selected provider from the UI inputs. */
 function getActiveKeyFromUi() {
-  const provider = providerSelect ? providerSelect.value : 'anthropic';
-  if (provider === 'gemini')   return (apiKeyGemini   && apiKeyGemini.value.trim())   || (apiKeyInput && apiKeyInput.value.trim()) || '';
-  if (provider === 'deepseek') return (apiKeyDeepSeek && apiKeyDeepSeek.value.trim()) || (apiKeyInput && apiKeyInput.value.trim()) || '';
-  if (provider === 'openai')   return (apiKeyOpenAI   && apiKeyOpenAI.value.trim())   || (apiKeyInput && apiKeyInput.value.trim()) || '';
-  return (apiKeyInput && apiKeyInput.value.trim()) || '';
+  const input = getProviderKeyInput(getSelectedProvider());
+  return (input && input.value.trim()) || '';
 }
 
 // Sentinel objects so the race winner is unambiguous regardless of what the
@@ -497,7 +486,7 @@ async function testConnection() {
     }
   } catch (_e) {
     // Test functions handle their own errors; this is a last-resort guard so a
-    // result line is always rendered and the spinner never stays up.
+    // result line is always rendered.
     if (testResult && !testResult.textContent) {
       showTestResult(false, tt('options.apiKey.networkError', { message: 'unknown' }));
     }
@@ -631,17 +620,6 @@ async function _handleTestResponse(response, opts) {
   showTestResult(false, tt('options.apiKey.failedStatus', { status: response.status }) + trimmedDetail);
 }
 
-function cancelTest() {
-  if (testAbort) {
-    try { testAbort.abort('user_cancel'); } catch {}
-    testAbort = null;
-  }
-  // Don't wait on the fetch promise (some Chrome builds never reject on
-  // abort): render the cancelled result and restore the UI immediately.
-  showTestResult(false, tt('options.apiKey.testCancelled'));
-  endTestUiInFlight();
-}
-
 function toggleKeyVisibility() {
   const showing = apiKeyInput.type === 'text';
   if (showing) {
@@ -684,7 +662,8 @@ function wireEvents() {
       const provider = providerSelect.value;
       const curModel = modelSelect ? modelSelect.value : '';
       populateModelSelect(provider, curModel);
-      updateTestButtonEnabled();
+      updateProviderKeyFields();
+      clearTestResult();
       saveNonKeyOnly();
     });
   }
@@ -736,10 +715,6 @@ function wireEvents() {
     });
   }
 
-  if (cancelTestBtn) {
-    cancelTestBtn.addEventListener('click', cancelTest);
-  }
-
   if (langSelect) {
     langSelect.addEventListener('change', (e) => {
       try {
@@ -747,6 +722,38 @@ function wireEvents() {
       } catch (_e) {}
     });
   }
+
+  // Theme toggle (segmented control: System / Light / Dark).
+  // Lives in <section id="sec-appearance"> and persists via the theme
+  // controller (common/theme.js → chrome.storage.local["at_theme"]).
+  const themeToggle = document.getElementById('themeToggle');
+  if (themeToggle) {
+    const reflect = () => {
+      const value =
+        (globalThis.__AT_THEME__ && globalThis.__AT_THEME__.value) || 'system';
+      const btns = themeToggle.querySelectorAll('[data-theme-value]');
+      btns.forEach((btn) => {
+        const isActive = btn.getAttribute('data-theme-value') === value;
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
+      });
+    };
+    themeToggle.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest('[data-theme-value]');
+      if (!btn) return;
+      const value = btn.getAttribute('data-theme-value');
+      if (!value) return;
+      try {
+        globalThis.__AT_THEME__ && globalThis.__AT_THEME__.set(value);
+      } catch (_e) {}
+      reflect();
+    });
+    try {
+      globalThis.__AT_THEME__ && globalThis.__AT_THEME__.onChange(reflect);
+    } catch (_e) {}
+    reflect();
+  }
+
   try {
     if (globalThis.__AT_I18N__) {
       globalThis.__AT_I18N__.onChange((lang) => {
@@ -914,7 +921,7 @@ async function bootstrap() {
 }
 
 // Deep-link support: popup's "API key required" CTA opens
-// options.html#api-key-gemini so the Gemini key field is scrolled to + focused.
+// options.html#provider-select so the user starts by choosing an LLM.
 function focusFromHash() {
   try {
     const id = (location.hash || '').replace(/^#/, '');

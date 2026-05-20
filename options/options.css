@@ -1,8 +1,10 @@
 /* Quickstart Copilot — options page styles.
  *
  * Generic colors / radii / spacing / shadows come from common/tokens.css.
- * Reusable button / pill / field / card / modal come from common/components.css.
- * This file owns options-specific layout (page shell, radio rows, dev-log).
+ * Reusable button / pill / field / card / modal / theme-toggle come from
+ * common/components.css. This file owns options-specific layout (page shell,
+ * radio rows, dev-log) and ensures the page matches the popup + sidepanel
+ * visual language: same accent, same shadows, same border weights.
  */
 
 * {
@@ -18,18 +20,28 @@ body {
   font-family: var(--at-font-ui);
   font-size: var(--at-fs-md);
   line-height: var(--at-lh-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
 .page {
-  max-width: 640px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: var(--at-sp-7) var(--at-sp-6) var(--at-sp-8);
+  padding: var(--at-sp-8) var(--at-sp-6) var(--at-sp-9);
   display: flex;
   flex-direction: column;
   gap: var(--at-sp-5);
 }
 
 /* ---------- Header ---------------------------------------------- */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--at-sp-4);
+  margin-bottom: var(--at-sp-1);
+}
 .page-header .brand {
   display: flex;
   align-items: center;
@@ -38,16 +50,18 @@ body {
 .page-header .brand__badge {
   width: 40px;
   height: 40px;
-  border-radius: var(--at-radius-md);
-  background: var(--at-accent);
+  border-radius: var(--at-radius-lg);
+  background: var(--at-accent-grad);
   color: var(--at-accent-fg);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   font-size: var(--at-fs-md);
-  letter-spacing: 0.5px;
-  box-shadow: var(--at-shadow-1);
+  letter-spacing: 0.04em;
+  box-shadow:
+    var(--at-shadow-inset),
+    0 1px 3px rgba(15, 15, 17, 0.10);
   flex: none;
 }
 .page-header .brand__text {
@@ -59,12 +73,14 @@ body {
   font-size: var(--at-fs-2xl);
   font-weight: 600;
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--at-tracking-tighter);
+  line-height: 1.2;
 }
 .page-subtitle {
   color: var(--at-fg-muted);
   font-size: var(--at-fs-base);
   margin: 2px 0 0;
+  line-height: var(--at-lh-base);
 }
 
 /* ---------- Section card ---------------------------------------- */
@@ -72,19 +88,21 @@ body {
 .section {
   display: flex;
   flex-direction: column;
-  gap: var(--at-sp-3);
+  gap: var(--at-sp-4);
   padding: var(--at-sp-6);
 }
 .section__title {
   font-size: var(--at-fs-xl);
   font-weight: 600;
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--at-tracking-tight);
+  color: var(--at-fg);
 }
 .section__desc {
   font-size: var(--at-fs-base);
   color: var(--at-fg-muted);
-  margin: 0 0 var(--at-sp-1);
+  margin: calc(var(--at-sp-2) * -1) 0 0;
+  line-height: var(--at-lh-base);
 }
 
 /* ---------- API key row ----------------------------------------- */
@@ -99,31 +117,31 @@ body {
   font-size: var(--at-fs-base);
 }
 .icon-btn {
-  width: 38px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--at-border);
   border-radius: var(--at-radius-md);
   background: var(--at-bg);
   color: var(--at-fg);
   cursor: pointer;
-  font-size: var(--at-fs-lg);
+  font-size: var(--at-fs-md);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   transition:
     border-color var(--at-dur-fast) var(--at-ease),
-    background-color var(--at-dur-fast) var(--at-ease),
+    background var(--at-dur-fast) var(--at-ease),
     box-shadow var(--at-dur-fast) var(--at-ease);
 }
 .icon-btn:hover {
   background: var(--at-bg-elev);
-  border-color: var(--at-fg-subtle);
+  border-color: var(--at-border-strong);
 }
 .icon-btn:focus-visible {
-  /* Universal outline (common/components.css §11.1) remains as the
-   * primary focus indicator; the colored border + halo are bonus visual
-   * cues for sighted users. */
   border-color: var(--at-accent);
   box-shadow: var(--at-focus-ring);
+  outline: none;
 }
 
 .key-warning {
@@ -162,9 +180,9 @@ body {
   display: inline-flex;
   align-items: center;
   background: var(--at-success);
-  color: #fff;
+  color: #ffffff;
   font-size: var(--at-fs-sm);
-  font-weight: 500;
+  font-weight: 600;
   padding: 4px var(--at-sp-3);
   border-radius: var(--at-radius-pill);
   opacity: 0;
@@ -173,6 +191,7 @@ body {
     opacity var(--at-dur-normal) var(--at-ease),
     transform var(--at-dur-normal) var(--at-ease);
   pointer-events: none;
+  box-shadow: var(--at-shadow-1);
 }
 .toast.show {
   opacity: 1;
@@ -180,23 +199,6 @@ body {
 }
 .maintenance-toast {
   align-self: flex-start;
-}
-
-/* ---------- Spinner --------------------------------------------- */
-.spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid color-mix(in srgb, var(--at-fg) 20%, transparent);
-  border-top-color: var(--at-fg);
-  border-radius: 50%;
-  animation: opt-spin 0.7s linear infinite;
-  display: inline-block;
-}
-@keyframes opt-spin {
-  to { transform: rotate(360deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .spinner { animation: none; }
 }
 
 /* ---------- Fieldset groups ------------------------------------- */
@@ -224,19 +226,19 @@ fieldset.group > legend {
   display: flex;
   align-items: flex-start;
   gap: var(--at-sp-3);
-  padding: var(--at-sp-3);
+  padding: var(--at-sp-3) var(--at-sp-4);
   border: 1px solid var(--at-border);
   border-radius: var(--at-radius-md);
   background: var(--at-bg);
   cursor: pointer;
   transition:
     border-color var(--at-dur-fast) var(--at-ease),
-    background-color var(--at-dur-fast) var(--at-ease),
+    background var(--at-dur-fast) var(--at-ease),
     box-shadow var(--at-dur-fast) var(--at-ease);
 }
 .radio:hover {
   background: var(--at-bg-elev);
-  border-color: var(--at-fg-subtle);
+  border-color: var(--at-border-strong);
 }
 .radio:focus-within {
   outline: none;
@@ -251,6 +253,7 @@ fieldset.group > legend {
 .radio:has(input:checked) {
   border-color: var(--at-accent);
   background: var(--at-accent-soft);
+  box-shadow: 0 0 0 1px var(--at-accent);
 }
 .radio-body {
   display: flex;
@@ -261,30 +264,34 @@ fieldset.group > legend {
   font-size: var(--at-fs-base);
   font-weight: 600;
   color: var(--at-fg);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--at-sp-2);
 }
 .radio-desc {
   font-size: var(--at-fs-sm);
   color: var(--at-fg-muted);
+  line-height: var(--at-lh-base);
 }
 .tag {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--at-fg-muted);
   background: var(--at-bg-sunken);
   border: 1px solid var(--at-border);
-  border-radius: var(--at-radius-pill);
-  padding: 0 var(--at-sp-2);
-  margin-left: var(--at-sp-1);
-  vertical-align: 2px;
+  border-radius: var(--at-radius-sm);
+  padding: 1px 6px;
+  line-height: 16px;
 }
 
 /* Gemini-first emphasis: primary provider stands out, fallback is dimmed. */
 .tag--primary {
-  color: var(--at-accent-fg, #fff);
-  background: var(--at-accent, #2563eb);
+  color: var(--at-accent-fg);
+  background: var(--at-accent);
   border-color: transparent;
 }
 .tag--muted {
@@ -322,6 +329,7 @@ fieldset.group > legend {
 .checkbox-desc {
   font-size: var(--at-fs-sm);
   color: var(--at-fg-muted);
+  line-height: var(--at-lh-base);
 }
 
 /* ---------- Privacy body ---------------------------------------- */
@@ -330,26 +338,6 @@ fieldset.group > legend {
   color: var(--at-fg);
   margin: 0;
   line-height: var(--at-lh-loose);
-}
-
-/* ---------- Test connection extras ------------------------------ */
-.test-elapsed {
-  font-family: var(--at-font-mono);
-  font-size: var(--at-fs-sm);
-  padding: 4px var(--at-sp-2);
-  border-radius: var(--at-radius-sm);
-  background: var(--at-bg-sunken);
-  color: var(--at-fg-muted);
-  border: 1px solid var(--at-border);
-}
-.test-elapsed--slow {
-  background: var(--at-warning-soft);
-  color: var(--at-warning);
-  border-color: color-mix(in srgb, var(--at-warning) 30%, transparent);
-}
-.test-inflight {
-  font-size: var(--at-fs-sm);
-  color: var(--at-fg-muted);
 }
 
 /* ---------- Developer log --------------------------------------- */
@@ -365,6 +353,7 @@ fieldset.group > legend {
   font-size: var(--at-fs-sm);
   color: var(--at-fg-muted);
   font-family: var(--at-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .checkbox-inline {
   margin: 0;
@@ -376,7 +365,7 @@ fieldset.group > legend {
   font-weight: 500;
 }
 .dev-empty {
-  padding: var(--at-sp-4);
+  padding: var(--at-sp-5);
   background: var(--at-bg-sunken);
   border: 1px dashed var(--at-border);
   border-radius: var(--at-radius-md);
@@ -418,6 +407,7 @@ fieldset.group > legend {
   font-family: var(--at-font-mono);
   font-size: var(--at-fs-xs);
   color: var(--at-fg-muted);
+  font-variant-numeric: tabular-nums;
 }
 .dev-tag {
   display: inline-block;
@@ -426,17 +416,18 @@ fieldset.group > legend {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 1px var(--at-sp-2);
-  border-radius: var(--at-radius-pill);
+  border-radius: var(--at-radius-sm);
   background: var(--at-bg-sunken);
   color: var(--at-fg-muted);
+  border: 1px solid var(--at-border);
 }
-.dev-tag--error      { background: var(--at-danger-soft);  color: var(--at-danger); }
-.dev-tag--warn       { background: var(--at-warning-soft); color: var(--at-warning); }
-.dev-tag--content    { background: rgba(14, 165, 233, 0.12); color: #0369a1; }
-.dev-tag--background { background: var(--at-accent-soft);   color: var(--at-accent); }
-.dev-tag--sidepanel  { background: var(--at-success-soft);  color: var(--at-success); }
-.dev-tag--options    { background: var(--at-danger-soft);   color: var(--at-danger); }
-.dev-tag--popup      { background: rgba(236, 72, 153, 0.12); color: #be185d; }
+.dev-tag--error      { background: var(--at-danger-soft);  color: var(--at-danger);  border-color: color-mix(in srgb, var(--at-danger) 25%, transparent); }
+.dev-tag--warn       { background: var(--at-warning-soft); color: var(--at-warning); border-color: color-mix(in srgb, var(--at-warning) 25%, transparent); }
+.dev-tag--content    { background: var(--at-accent-soft);  color: var(--at-accent);  border-color: color-mix(in srgb, var(--at-accent) 25%, transparent); }
+.dev-tag--background { background: var(--at-accent-soft);  color: var(--at-accent);  border-color: color-mix(in srgb, var(--at-accent) 25%, transparent); }
+.dev-tag--sidepanel  { background: var(--at-success-soft); color: var(--at-success); border-color: color-mix(in srgb, var(--at-success) 25%, transparent); }
+.dev-tag--options    { background: var(--at-danger-soft);  color: var(--at-danger);  border-color: color-mix(in srgb, var(--at-danger) 25%, transparent); }
+.dev-tag--popup      { background: var(--at-warning-soft); color: var(--at-warning); border-color: color-mix(in srgb, var(--at-warning) 25%, transparent); }
 .dev-log-item__msg {
   font-family: var(--at-font-mono);
   font-size: var(--at-fs-sm);
@@ -455,11 +446,12 @@ fieldset.group > legend {
 }
 .dev-log-item__stack pre {
   margin: var(--at-sp-2) 0 0;
-  padding: var(--at-sp-2);
-  background: #0f172a;
-  color: #e2e8f0;
+  padding: var(--at-sp-3);
+  background: var(--at-bg-sunken);
+  color: var(--at-fg);
   font-family: var(--at-font-mono);
   font-size: var(--at-fs-xs);
+  border: 1px solid var(--at-border);
   border-radius: var(--at-radius-sm);
   overflow: auto;
   max-height: 220px;
@@ -471,5 +463,6 @@ fieldset.group > legend {
   font-size: var(--at-fs-sm);
   color: var(--at-fg-muted);
   text-align: left;
-  padding: var(--at-sp-2) var(--at-sp-1) 0;
+  padding: var(--at-sp-3) var(--at-sp-1) 0;
+  font-variant-numeric: tabular-nums;
 }

@@ -1,9 +1,11 @@
 /* Quickstart Copilot — popup-specific styles.
  *
  * Generic colors, radii, spacing, shadows come from common/tokens.css.
- * Reusable component primitives (.qc-btn, .qc-pill, .qc-field, .qc-select)
- * come from common/components.css. This file only owns popup layout +
- * a couple of popup-only widgets (status card, brand badge, lang chip).
+ * Reusable component primitives (.qc-btn, .qc-pill, .qc-field, .qc-select,
+ * .qc-theme-toggle, .qc-tag) come from common/components.css. This file only
+ * owns popup layout and a couple of popup-only widgets (brand badge, status
+ * card, language chip). All color values flow through tokens so dark mode
+ * works out of the box.
  */
 
 * {
@@ -20,44 +22,50 @@ body {
   font-size: var(--at-fs-md);
   line-height: var(--at-lh-base);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
 body {
-  width: 340px;
-  min-height: 340px;
+  width: 360px;
+  min-height: 360px;
 }
 
 .app {
   display: flex;
   flex-direction: column;
-  gap: var(--at-sp-3);
-  padding: var(--at-sp-4) var(--at-sp-4) var(--at-sp-3);
+  gap: var(--at-sp-4);
+  padding: var(--at-sp-5) var(--at-sp-5) var(--at-sp-4);
 }
 
 /* ---------- Header ----------------------------------------------- */
 .header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: var(--at-sp-3);
 }
 .brand {
   display: flex;
   align-items: center;
   gap: var(--at-sp-3);
-  width: 100%;
+  min-width: 0;
 }
 .brand__badge {
   width: 32px;
   height: 32px;
   border-radius: var(--at-radius-md);
-  background: var(--at-accent);
+  background: var(--at-accent-grad);
   color: var(--at-accent-fg);
   font-weight: 700;
-  font-size: var(--at-fs-base);
-  letter-spacing: 0.5px;
+  font-size: var(--at-fs-sm);
+  letter-spacing: 0.04em;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--at-shadow-1);
+  box-shadow:
+    var(--at-shadow-inset),
+    0 1px 2px rgba(15, 15, 17, 0.10);
   flex: none;
 }
 .brand__text {
@@ -69,10 +77,11 @@ body {
   margin: 0;
   font-size: var(--at-fs-md);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--at-tracking-tight);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--at-fg);
 }
 .brand__subtitle {
   margin: 1px 0 0;
@@ -95,22 +104,20 @@ body {
 .status-card__host {
   font-size: var(--at-fs-sm);
   color: var(--at-fg-muted);
-  max-width: 170px;
+  max-width: 180px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Action stack ----------------------------------------- */
-/* Visual hierarchy: primary (Open Sidepanel) dominates; quick-skip is a
- * subdued ghost button below. */
 .action {
   display: flex;
   flex-direction: column;
   gap: var(--at-sp-2);
 }
 .action__skip {
-  /* Slightly smaller so the visual weight clearly favors the primary CTA. */
   font-weight: 500;
 }
 .action__hint {
@@ -118,6 +125,7 @@ body {
   font-size: var(--at-fs-xs);
   color: var(--at-fg-muted);
   text-align: center;
+  line-height: var(--at-lh-base);
 }
 
 /* ---------- Warning variant -------------------------------------- */
@@ -125,21 +133,23 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--at-sp-2);
-  padding: var(--at-sp-3);
+  padding: var(--at-sp-3) var(--at-sp-4);
   border: 1px solid color-mix(in srgb, var(--at-danger) 25%, transparent);
   background: var(--at-danger-soft);
-  border-radius: var(--at-radius-md);
+  border-radius: var(--at-radius-lg);
 }
 .warning__title {
   margin: 0;
   font-size: var(--at-fs-base);
   font-weight: 600;
   color: var(--at-danger);
+  letter-spacing: var(--at-tracking-tight);
 }
 .warning__body {
   margin: 0;
   font-size: var(--at-fs-sm);
   color: var(--at-fg);
+  line-height: var(--at-lh-base);
 }
 
 /* ---------- Quick settings --------------------------------------- */
@@ -148,19 +158,30 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: var(--at-sp-3);
 }
-.quick-settings--lang {
-  grid-template-columns: 1fr;
-  justify-items: end;
+
+/* ---------- Settings row (theme + lang) -------------------------- */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--at-sp-3);
+}
+.settings-row__label {
+  font-size: var(--at-fs-xs);
+  font-weight: 600;
+  color: var(--at-fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* ---------- Language chip (pill-styled select) ------------------- */
-/* Compact, pill-shaped select that reads as a chip rather than a full row. */
 .lang-chip {
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--at-sp-2);
-  padding: 4px var(--at-sp-3);
+  padding: 0 var(--at-sp-3);
+  height: 26px;
   border-radius: var(--at-radius-pill);
   background: var(--at-bg-sunken);
   border: 1px solid var(--at-border);
@@ -170,11 +191,11 @@ body {
   cursor: pointer;
   transition:
     border-color var(--at-dur-fast) var(--at-ease),
-    background-color var(--at-dur-fast) var(--at-ease),
+    background var(--at-dur-fast) var(--at-ease),
     box-shadow var(--at-dur-fast) var(--at-ease);
 }
 .lang-chip:hover {
-  border-color: var(--at-fg-subtle);
+  border-color: var(--at-border-strong);
   background: var(--at-bg-elev);
 }
 .lang-chip:focus-within {
@@ -183,7 +204,7 @@ body {
   box-shadow: var(--at-focus-ring);
 }
 .lang-chip__label {
-  font-size: var(--at-fs-xs);
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--at-fg-muted);
@@ -206,15 +227,9 @@ body {
   padding: 0;
   margin: 0;
   cursor: pointer;
-  /* Native focus ring is suppressed on the inner <select>; the wrapper
-   * `.lang-chip:focus-within` provides the focus indicator on the
-   * outer chip instead — keeps the focus halo aligned with the visible
-   * pill shape rather than the bare inline select. */
   outline: none;
 }
 .lang-chip__select:focus-visible {
-  /* Defeat the universal outline (Section 11.1) on this inner control —
-   * the wrapper's :focus-within box-shadow is the visible focus state. */
   outline: none;
 }
 
@@ -223,9 +238,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: var(--at-sp-2);
-  border-top: 1px solid var(--at-border);
-  margin-top: var(--at-sp-1);
+  padding-top: var(--at-sp-3);
+  border-top: 1px solid var(--at-border-soft);
 }
 .footer__link {
   font-size: var(--at-fs-sm);
@@ -235,19 +249,20 @@ body {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--at-sp-1);
   border-radius: var(--at-radius-sm);
   padding: 2px 4px;
+  transition: color var(--at-dur-fast) var(--at-ease);
 }
 .footer__link:hover {
   color: var(--at-fg);
 }
 .footer__link:focus-visible {
-  /* Outline comes from common/components.css universal rule (Section 11.1). */
   box-shadow: var(--at-focus-ring);
 }
 .footer__version {
   font-size: var(--at-fs-xs);
   color: var(--at-fg-muted);
   font-variant-numeric: tabular-nums;
+  font-family: var(--at-font-mono);
 }

@@ -8,6 +8,9 @@
     <link rel="stylesheet" href="../common/components.css" />
     <link rel="stylesheet" href="sidepanel.css" />
     <link rel="stylesheet" href="sidepanel-catalog.css" />
+    <!-- Theme controller must run before paint so <html data-theme> is set
+         synchronously and there is no flash of the wrong theme. -->
+    <script src="../common/theme.js"></script>
   </head>
   <body>
     <div class="app" data-state="idle" data-mode="catalog">
@@ -34,6 +37,17 @@
             data-i18n="catalog.openEnded.headerTag"
             hidden
           >Open-ended mode</span>
+          <button
+            type="button"
+            id="themeCycleBtn"
+            class="lang-pill topbar__theme"
+            aria-label="Toggle theme"
+            data-i18n-aria-label="theme.cycleAria"
+            data-i18n-title="theme.cycleTitle"
+            title="Theme"
+          >
+            <svg viewBox="0 0 14 14" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="2.5" width="11" height="8" rx="1.5"/><path d="M5 12.5h4M7 10.5v2"/></svg>
+          </button>
           <button
             type="button"
             id="langPill"
